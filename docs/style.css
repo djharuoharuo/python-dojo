@@ -1,0 +1,211 @@
+/* Python道場 — ダーク基調（深夜の練習を想定 §8-7）。
+   Galaxy Z Fold 3 の内外画面どちらでも崩れないよう固定幅を使わない */
+
+:root {
+  --bg: #0f1117;
+  --panel: #1a1d27;
+  --panel2: #232734;
+  --text: #e6e6e6;
+  --muted: #9aa0ae;
+  --accent: #4fc08d;   /* 正解・実行系 */
+  --accent2: #e8a33d;  /* 採点・注意系 */
+  --danger: #e05d5d;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 12px 14px calc(24px + env(safe-area-inset-bottom));
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  max-width: 720px;
+  margin-inline: auto;
+}
+
+h1 { font-size: 1.3rem; margin: 8px 0; }
+h2 { font-size: 1.05rem; color: var(--muted); margin: 18px 0 8px; }
+h3 { font-size: 1rem; margin: 12px 0 6px; }
+
+pre, textarea, code {
+  font-family: "SF Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 14px;
+}
+
+/* ---- バナー ---- */
+#notice-banner, #error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+#notice-banner { background: #3a3320; border: 1px solid var(--accent2); }
+#error-banner { background: #3a2020; border: 1px solid var(--danger); }
+#notice-text, #error-text { flex: 1; }
+
+/* ---- ホーム ---- */
+.home-header { display: flex; justify-content: space-between; align-items: center; }
+.streak { font-size: 1rem; color: var(--accent2); font-weight: bold; }
+.bottleneck {
+  background: var(--panel);
+  border-left: 4px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  margin: 8px 0;
+}
+.progress { color: var(--muted); font-size: 0.88rem; margin: 4px 0 0; }
+
+.problem-card {
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid #2c3040;
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 14px;
+  margin-bottom: 10px;
+  font-size: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.problem-card:active { background: var(--panel2); }
+.chip {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+.chip.type-デバッグ { color: var(--danger); border-color: var(--danger); }
+.chip.type-ノーヒント { color: var(--accent2); border-color: var(--accent2); }
+
+/* ---- ボタン ---- */
+button { cursor: pointer; border: none; border-radius: var(--radius); }
+.btn-primary, .btn-accent, .btn-ghost {
+  display: block;
+  width: 100%;
+  padding: 13px;
+  font-size: 1rem;
+  font-weight: bold;
+  margin-top: 10px;
+}
+.btn-primary { background: var(--accent); color: #10241a; }
+.btn-accent { background: var(--accent2); color: #2a1f08; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--muted); }
+button:disabled { opacity: 0.35; }
+.btn-small {
+  background: var(--panel2);
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+.btn-row { display: flex; gap: 10px; }
+.run-row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+.run-row .btn-primary, .run-row .btn-accent { flex: 1; margin-top: 0; }
+.easy-label { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+
+/* ---- 問題画面 ---- */
+.problem-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+#problem-title { flex: 1; font-weight: bold; }
+.problem-body { background: var(--panel); border-radius: var(--radius); padding: 12px 14px; }
+#problem-conditions { margin: 6px 0; padding-left: 20px; font-size: 0.92rem; }
+.example-label { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+.example pre {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 4px 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+#editor {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid #2c3040;
+  border-radius: var(--radius);
+  resize: vertical;
+  line-height: 1.5;
+  tab-size: 2;
+}
+#editor:focus { outline: 2px solid var(--accent); }
+
+#run-output {
+  background: #000;
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-top: 10px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+#run-output.has-error { border-left: 4px solid var(--danger); }
+
+.loading { color: var(--muted); font-size: 0.9rem; padding: 8px 0; }
+
+/* ---- ヒント・結果 ---- */
+#hint-area, #result-area {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.verdict { font-size: 1.2rem; font-weight: bold; padding: 6px 0; }
+.verdict.ok { color: var(--accent); }
+.verdict.close { color: var(--accent2); }
+.verdict.ng { color: var(--danger); }
+.state-change {
+  background: var(--panel2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+#explanation pre {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+#explanation ul { padding-left: 20px; }
+.expl-label { color: var(--muted); font-size: 0.82rem; margin-top: 10px; }
+
+.self-note { margin-top: 12px; }
+.self-note label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 4px; }
+.self-note input {
+  width: 100%;
+  padding: 10px;
+  background: var(--panel2);
+  border: 1px solid #2c3040;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px; /* iOS/Androidのズーム防止に16px以上 */
+}
+
+/* ---- サマリ ---- */
+#summary-body {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-size: 1rem;
+}
+#summary-body ul { padding-left: 20px; }

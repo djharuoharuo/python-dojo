@@ -1,0 +1,57 @@
+# =====================================================================
+# deploy.yml — GitHub Pages デプロイ。
+# Repository Secrets（GAS_URL / APP_TOKEN）から docs/config.js を生成して
+# 注入する（§9-5。リポジトリには秘密を一切置かない）。
+# 事前設定: Settings → Pages → Source を「GitHub Actions」にすること。
+# =====================================================================
+name: Deploy PWA to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に2つ走らせない（最後のpushが勝つ）
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SecretsチェックとconfigJS生成
+        env:
+          GAS_URL: ${{ secrets.GAS_URL }}
+          APP_TOKEN: ${{ secrets.APP_TOKEN }}
+        run: |
+          if [ -z "$GAS_URL" ] || [ -z "$APP_TOKEN" ]; then
+            echo "::error::Secrets GAS_URL / APP_TOKEN が未設定です。README の手順4を確認してください"
+            exit 1
+          fi
+          cat > docs/config.js <<EOF
+          // 自動生成ファイル（GitHub Actions が Secrets から生成）。リポジトリには存在しない
+          const CONFIG = {
+            GAS_URL: '${GAS_URL}',
+            APP_TOKEN: '${APP_TOKEN}'
+          };
+          EOF
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

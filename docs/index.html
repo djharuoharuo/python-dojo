@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1117">
+  <title>Python道場</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- モデル通知などのバナー（§5b） -->
+  <div id="notice-banner" hidden>
+    <span id="notice-text"></span>
+    <button id="notice-ok" class="btn-small">OK</button>
+  </div>
+
+  <!-- エラー表示（黙って失敗しない §14） -->
+  <div id="error-banner" hidden>
+    <span id="error-text"></span>
+    <button id="error-close" class="btn-small">閉じる</button>
+  </div>
+
+  <!-- ホーム画面 -->
+  <section id="screen-home">
+    <header class="home-header">
+      <h1>Python道場</h1>
+      <div id="streak" class="streak"></div>
+    </header>
+    <div id="bottleneck" class="bottleneck" hidden></div>
+    <div id="progress" class="progress"></div>
+    <h2>今日の問題</h2>
+    <div id="problem-list"></div>
+    <button id="btn-generate" class="btn-primary" hidden>問題を作る</button>
+    <div id="home-loading" class="loading">読み込み中…</div>
+  </section>
+
+  <!-- 問題画面 -->
+  <section id="screen-problem" hidden>
+    <header class="problem-header">
+      <button id="btn-back" class="btn-small">← ホーム</button>
+      <span id="problem-title"></span>
+      <span id="problem-type" class="chip"></span>
+    </header>
+    <div class="problem-body">
+      <p id="problem-statement"></p>
+      <ul id="problem-conditions"></ul>
+      <div class="example">
+        <div class="example-label">実行例</div>
+        <pre id="problem-example"></pre>
+        <div class="example-label">期待される出力</div>
+        <pre id="problem-expected"></pre>
+      </div>
+    </div>
+
+    <textarea id="editor" spellcheck="false" autocapitalize="off" autocorrect="off"
+      autocomplete="off" placeholder="ここにPythonコードを書く"></textarea>
+
+    <div class="run-row">
+      <button id="btn-run" class="btn-primary">▶ 実行</button>
+      <label class="easy-label" id="easy-wrap" hidden>
+        <input type="checkbox" id="easy-check"> 余裕だった
+      </label>
+      <button id="btn-grade" class="btn-accent" disabled>採点する</button>
+    </div>
+    <div id="run-status" class="loading" hidden></div>
+    <pre id="run-output" hidden></pre>
+
+    <!-- ヒント段階の結果（§7 2段階方式） -->
+    <div id="hint-area" hidden>
+      <h3>💡 ヒント</h3>
+      <ul id="hint-list"></ul>
+      <div class="btn-row">
+        <button id="btn-retry" class="btn-primary">修正して再実行</button>
+        <button id="btn-reveal" class="btn-ghost">答えを見る</button>
+      </div>
+    </div>
+
+    <!-- full採点結果 -->
+    <div id="result-area" hidden>
+      <div id="verdict" class="verdict"></div>
+      <div id="state-change" class="state-change" hidden></div>
+      <div id="explanation"></div>
+      <div class="self-note">
+        <label for="self-note-input">原因を自分の言葉で1行（任意・あとで効く）</label>
+        <input type="text" id="self-note-input" maxlength="300"
+          autocapitalize="off" autocomplete="off" placeholder="例: rangeの終わりは含まれないのを忘れた">
+      </div>
+      <button id="btn-next" class="btn-primary">保存して次へ</button>
+    </div>
+  </section>
+
+  <!-- 完了サマリ（今日の進歩 §11） -->
+  <section id="screen-summary" hidden>
+    <h1>今日の進歩 🎉</h1>
+    <div id="summary-body"></div>
+    <button id="btn-summary-home" class="btn-primary">ホームへ</button>
+  </section>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script src="runner.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

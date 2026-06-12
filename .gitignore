@@ -1,0 +1,9 @@
+# 秘密を含むため絶対にコミットしない（GitHub Actionsがデプロイ時に生成する §9-5）
+docs/config.js
+
+# ビルド用の依存（gas/fsrs.bundle.js は生成物だがclasp pushに必要なのでコミットする）
+build/node_modules/
+
+# clasp のログイン情報・プロジェクト紐付け（個人環境ごとに作る）
+.clasprc.json
+gas/.clasp.json

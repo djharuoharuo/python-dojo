@@ -1,0 +1,309 @@
+# CLAUDE.md — Python道場（python-dojo）
+
+スマホ完結型・自己適応Python学習アプリ。
+設計思想：**「ワークフロー型」**（Anthropic "Building Effective Agents" 準拠）。状態管理と手順はすべてコードが持ち、LLMは「問題を生成する」「採点する」だけのステートレスな関数として使う。AIチャットへの運用指示・状態記憶への依存をゼロにする。
+
+---
+
+## 0. 背景（なぜ作るか）
+
+- 利用者（はるき）はPython初心者。これまでChatGPT＋Notionで学習システムを運用していたが、LLMに状態管理をさせる構造のため「指示無視」「読み書き失敗」「番号重複」が頻発した
+- Claude（Pro）は開発専用にしたい。日常学習はサブスク不要・月額¥0で回したい
+- 学習は**スマホ（Galaxy Z Fold 3 / Android / Chrome）だけで完結**させる。開発はPC
+- **最終目標**：基礎修了後、ゼロトラストの原則（毎リクエスト検証・最小権限・fail closed）をPythonで**自作デモできる**状態に到達する。カリキュラムの終点は§11の卒業制作
+
+## 1. 譲れない要件（非交渉）
+
+1. 学習者のレベル・苦手傾向に合わせた問題の自動生成
+2. 採点と完全初心者向けの解説
+3. 学習データ（正誤・ミス傾向・復習スケジュール）の自動蓄積
+4. 蓄積データが次の出題に自動反映される
+5. 日常操作はスマホのボタンタップのみ（プロンプト手打ち不要）
+6. ランニングコスト ¥0/月
+
+---
+
+## 2. アーキテクチャ
+
+```
+[スマホPWA]  GitHub Pages（docs/ 配下・無料）
+  ├ 出題リスト / 問題画面 / コードエディタ(textarea)
+  ├ Pyodide（CDN・ブラウザ内でCPython実行→stdout/traceback自動取得）
+  └ fetch → GAS Web API（JSON）
+        │
+[GAS Web API]  新規スタンドアロンプロジェクト（claspで同リポジトリ管理）
+  ├ 認証: リクエスト毎に APP_TOKEN 照合（Script Properties）
+  ├ Gemini API 呼び出し（キーはScript Propertiesのみ。クライアントに置かない）
+  ├ FSRSスケジューラ（ts-fsrsをesbuildでバンドルして同梱）
+  └ Googleスプレッドシート読み書き（学習者モデルの唯一の保存先）
+        │
+[データ]  1つのスプレッドシート（タブ: concepts / problems / attempts / mistakes / config）
+```
+
+- **Notionは使わない**（Phase 2で週次サマリのミラー出力のみ検討）。旧Notionシステムは閲覧用アーカイブとして残す
+- 既存GASプロジェクト（notion-diary-auto-summary）には**一切手を入れない**。完全新規
+
+## 3. リポジトリ構成
+
+```
+python-dojo/
+├ CLAUDE.md            ← 本ファイル
+├ README.md            ← セットアップ手順（人間向け・日本語）
+├ docs/                ← GitHub Pages 公開ディレクトリ（PWA本体）
+│  ├ index.html
+│  ├ app.js
+│  ├ style.css
+│  ├ manifest.json     ← ホーム画面追加用
+│  └ sw.js             ← キャッシュ用Service Worker（Pyodide本体もキャッシュ）
+├ gas/                 ← clasp管理のGASソース
+│  ├ appsscript.json
+│  ├ main.js           ← doPost ルーター
+│  ├ generate.js       ← 出題ロジック＋Gemini呼び出し
+│  ├ grade.js          ← 採点ロジック＋Gemini呼び出し
+│  ├ store.js          ← Sheets読み書き
+│  ├ fsrs.bundle.js    ← ts-fsrsバンドル（build/で生成）
+│  └ setup.js          ← 初回セットアップ関数（シート自動作成＋シード投入）
+├ build/               ← esbuild設定（ts-fsrs → fsrs.bundle.js）
+└ .github/workflows/
+   └ deploy.yml        ← Pagesデプロイ（SecretsからconfigJSを生成して注入）
+```
+
+技術制約：フロントはビルド不要のvanilla HTML/CSS/JS（保守性最優先）。フレームワーク・npm依存はフロントに持ち込まない。Pyodideは jsDelivr CDN から読み込み。
+
+---
+
+## 4. データモデル（スプレッドシート）
+
+### concepts タブ
+| 列 | 内容 |
+|---|---|
+| concept_id | 一意ID（例: `for_range`） |
+| name | 表示名（例: `for / range`） |
+| state | `未` / `練習中` / `習得` |
+| prereq | 前提concept_id（カンマ区切り。スキルツリー） |
+| no_review | TRUEなら復習対象外（printなど常用概念） |
+| due / stability / difficulty / reps / lapses / last_review | FSRSカード状態 |
+| nohint_streak | ノーヒント連続正解数（種別切替判定用） |
+| nohint_correct_days | ノーヒント正解した日付リスト（昇級判定用） |
+
+### problems タブ
+problem_id / number（通し番号） / concept_id / type（新規・復習・ノーヒント・デバッグ） / payload_json（問題全文） / status（未回答・採点済） / created_at
+
+### attempts タブ
+attempt_id（採点時にコードが発番。UI→saveSelfNoteで使用） / timestamp / problem_id / concept_id / type / verdict（正解・惜しい・不正解） / hint_used（bool） / error_pattern / self_note（本人記入の原因1行・初期空） / code / stdout / stderr / model_used
+
+### mistakes タブ
+pattern / count / last_seen（error_patternの集計。デバッグ問題の素材）
+
+### config タブ（key-value形式）
+| key | 既定値 | 用途 |
+|---|---|---|
+| last_problem_number | 30 | 次の発番はこれ+1 |
+| daily_count | 3 | 1セッションの問題数 |
+| theme_weights | 音楽:0.4,セキュリティ:0.3,日常:0.3 | 題材ローテの重み |
+| target_acc_low / target_acc_high | 0.75 / 0.90 | 難易度クランプの目標帯 |
+| nohint_threshold | 3 | この連続正解数で足場外し |
+| daily_llm_budget | 60 | 1日のLLM呼び出し上限（乱用ガード） |
+| model_chain | gemini-2.5-flash,gemini-2.5-flash-lite | 試行順（カンマ区切り） |
+| model_last_used / model_checked_at / model_notice | — | §5b |
+| streak_freeze_used_week | — | Phase2 |
+
+> 補足：「今日のボトルネック」は専用列を持たず、getToday時に mistakes を count降順で読み先頭1件を返す（データの一元管理）
+
+## 5. GAS Web API 仕様
+
+- デプロイ：ウェブアプリ（実行ユーザー＝自分、アクセス＝全員）。URLは1本
+- **CORS対策（重要）**：GASはOPTIONSプリフライトを処理できないため、クライアントは `Content-Type: text/plain` で `JSON.stringify(body)` をPOSTする（simple requestにしてプリフライト回避）。GASは `e.postData.contents` をparseし、`ContentService` でJSON文字列を返す
+- 全リクエスト共通body：`{ token, action, ...params }`。token不一致は `{error:"unauthorized"}`
+- **競合制御**：書き込み系（generate / grade / saveSelfNote）は `LockService.getScriptLock()` で直列化し、`last_problem_number` の採番やFSRS更新の競合を防ぐ（番号重複を構造的に根絶）。読み取り（getToday）はロック不要
+- **エラー応答の統一**：全actionは失敗時 `{error: "種別", message: "日本語の対処"}` を返し、フロントは§8の方針で表示（黙って失敗しない）
+- **日次予算（乱用ガード）**：LLM呼び出しは1日 `daily_llm_budget`（既定60）回まで。超過は `{error:"budget"}` を返しnoticeに記録。TOKENが漏れた場合でもGemini無料枠の枯渇を1日分で食い止める
+
+### action 一覧
+| action | 入力 | 出力 | 処理 |
+|---|---|---|---|
+| `getToday` | なし | 未回答問題リスト＋現在地サマリ（習得数・本日の復習対象・ストリーク日数・**今日のボトルネック**＝mistakes最頻パターン1つ） | 読み取りのみ。§5bヘルスチェックもここで |
+| `generate` | `count`(既定3) | 生成された問題配列 | §6の出題ロジック→Gemini→検証→problemsに保存→last_number更新 |
+| `grade` | `problem_id, code, stdout, stderr, stage("hint"/"full"), hint_used` | §7の採点JSON（full時は `attempt_id` を必ず含めて返す） | stage=fullの時のみ：attempts追記（attempt_id発番）・FSRS更新・mistakes集計・昇級判定 |
+| `saveSelfNote` | `attempt_id, note` | ok | grade(full)が返したattempt_idの行のself_noteを更新 |
+| `clearNotice` | なし | ok | model_notice をクリア |
+
+### 5b. モデル管理（変更検知・自動切替・ユーザー通知）
+- `config` に追加：`model_chain`（優先順）/ `model_last_used` / `model_checked_at` / `model_notice`
+- **週次ヘルスチェック**：`getToday` 時に `model_checked_at` が7日以上前なら Gemini の `models.list` を呼び、チェーン内モデルの存在を検証。消えたモデルはチェーンから外して `model_notice` に記録
+- **自動切替**：呼び出し失敗（404=廃止／429=枯渇／5xx）は次のモデルへ。実際に使ったモデルが `model_last_used` と異なれば `model_notice` を更新
+- **ユーザー通知**：`getToday` レスポンスに `notice` を含め、フロントは画面上部にバナー表示（例：「⚠️ gemini-2.5-flash が利用不可のため flash-lite で動作中」）。[OK]タップで `clearNotice` action を呼びクリア
+- READMEに「モデル名は変わるもの」という前提と、チェーン更新手順（configの1セル書き換えのみ）を明記
+
+## 6. 出題ロジック（すべてコード側で決定。LLMには完成した仕様を渡すだけ）
+
+1. **構成（3問）**：復習1問＋新規 or 練習中2問
+   - 復習枠：`due <= 今日` の習得概念のうち最も期限超過が古いもの。該当なしなら mistakes 上位パターンに関連する練習中概念
+   - 新規/練習枠：スキルツリーで前提を満たし `state=未 or 練習中` の概念（未は同時に1つまで新規解放）
+2. **種別の自動切替**：対象概念の `nohint_streak >= 3` → 以後その概念は「ノーヒント」と「デバッグ」を交互に出題（足場外し）
+   - デバッグ問題のバグは mistakes 上位パターンから1つ選んで仕込む
+3. **題材**：「音楽制作」（BPM→ミリ秒換算、小節・拍、サンプル名処理）と「セキュリティ／ゼロトラスト」（ログ行カウント、失敗ログイン集計、最多アクセス元の探索、トークン文字列チェック等）を主軸に、日常題材を混ぜる。配分は `theme_weights`（既定 音楽0.4／セキュリティ0.3／日常0.3）。**同じ文法をセキュリティ文脈でも出す**（例：for+if＝失敗ログインの回数カウント、最大値探索＝最多アクセスIPの特定）
+4. 問題番号は `config.last_problem_number + 1` から連番
+5. **難易度クランプ（85%ルール）**：直近20問の正答率（惜しい=0.5換算）が90%超→ノーヒント/デバッグ比率を上げる。75%未満→新規解放を止め、復習と練習中の比率を上げる（目標帯75〜90%。§11参照）
+
+### Gemini 生成呼び出し
+- モデルは**ハードコード禁止**。`config` タブの `model_chain`（既定: `gemini-2.5-flash → gemini-2.5-flash-lite`。3系の正式GA名は実装時に `models.list` で確認して先頭に追加）を上から順に試行。429/404/5xxは指数バックオフ→次のモデルへ
+- レスポンスに必ず `model_used` を含め、attemptsにも記録（§5bのモデル管理参照）
+- `generationConfig`: `responseMimeType: "application/json"` + responseSchema、temperature 0.7
+- システム指示（要旨）：
+
+```
+あなたはPython完全初心者向けの問題作成者。渡された仕様（概念・種別・テーマ・番号）に
+厳密に従い、JSONのみを出力する。
+- 日本語。問題文は2〜3文。専門用語には短い説明を添える
+- 種別がノーヒントの場合、conditionsは「関数名は `xxx`」の1項目のみ
+- 種別がデバッグの場合、buggy_codeに指定されたerror_patternのバグを1つだけ仕込む
+- example_callは print() を含む完全な呼び出し、expected_outputは厳密な出力
+```
+
+- 出力スキーマ：
+```json
+{"problems":[{"number":31,"title":"","concept_id":"while","type":"新規",
+"statement":"","conditions":["関数名は `count_up`","while を使う"],
+"example_call":"print(count_up(5))","expected_output":"1\n2\n3\n4\n5",
+"buggy_code":null,"theme":"音楽"}]}
+```
+- 検証：JSONパース失敗・number重複・スキーマ不一致は1回だけ再生成、それでも失敗ならエラーを返す（クライアントに「もう一度」ボタン表示）
+- **expected_output は採点の機械的正解として problems に保存する**（§7でコードが文字列比較に使う。デバッグ種別では「修正後の正しい出力」を保存）
+
+## 7. 採点ロジック
+
+**前提：実行結果なしでは採点リクエスト自体を送らない**（フロント側で[実行]未実施なら[採点]ボタンを無効化）。
+
+### 正誤はコードが決める（LLMに委ねない）
+- **一次判定はコードが `stdout` と保存済み `expected_output` を正規化比較**（末尾改行・行末空白を吸収）して 正解/不正解 を出す。LLMの気分で正誤が揺れる事故を防ぐ
+- stderr が空でなくTracebackがある → 自動的に不正解（実行時エラー）
+- `verdict` の「惜しい」は、出力は不一致だが LLM が「方針は合っている」と判定した場合にコードが格上げする補助ラベル。**正解/不正解の確定はコードの比較結果が最終**
+- LLMの役割は**ヒント生成と解説のみ**。正誤フラグはコードが付けてからLLMに渡す（LLMには「この回答は不正解だった。なぜか初心者向けに説明して」と既に判定済みで依頼する）
+
+### 2段階方式（ヒント先行）
+- type が **復習・ノーヒント・デバッグ** → まず `stage="hint"`：コードが正誤を出し、不正解なら誘導質問のみ返す（正解コードは返さない）。本人が修正して再実行・再採点、または「答えを見る」タップで `stage="full"`。hint段階では attempts に書かない（full確定時にまとめて記録）
+- type が **新規** → 最初から `stage="full"`（worked example方式）
+- ※ hint段階で一度でもヒントを見たら、その問題の最終 `hint_used=true` として記録
+
+### Gemini 採点呼び出し（解説生成）
+- temperature 0.2、responseSchema必須。入力：問題payload＋本人コード＋**実際のstdout/stderr＋コードが出した正誤フラグ**
+- hint出力スキーマ：`{"hints": ["最大2つ。答えは明かさない。stderrがあればTracebackの読み方を1つ含める"]}`
+- full出力スキーマ：
+```json
+{"verdict_hint":"惜しい|不正解",
+"correct_code":"...",
+"what_differs":"どこが合っていてどこが惜しいか",
+"line_by_line":["1行ずつの解説。用語・関数の意味を毎回添える"],
+"why":"なぜそう書くのか（概念理解）",
+"error_pattern":"未定義変数|range+1忘れ|更新方向逆|比較対象ミス|return忘れ|スペルミス|初期値設計|その他|なし",
+"one_point":"次に活きる一言"}
+```
+- 正解時はLLMを呼ばず、コードが定型の「正解！」＋保存済みexpected_outputとの一致を表示（API節約。任意で短い称賛のみLLM）
+
+### full採点後のコード側処理（LLMに任せない）
+1. attempts に1行追記し **attempt_id を発番**（応答に含めUIへ返す）
+2. **FSRS rating**：不正解→Again / 惜しい→Hard / ヒントあり正解→Hard / ノーヒント正解→Good（UIの「余裕だった」タップ時のみEasy）→ conceptsのカード状態更新
+3. **昇級判定**：ノーヒント正解日が**異なる日付で2日分**揃ったら `練習中→習得`（同日2回は不可）。習得概念で 惜しい/不正解 → `習得→練習中` に降格＋due=7日後。さらに正解時は `nohint_streak` を更新、不正解で0リセット
+4. error_pattern ≠ なし → mistakes 集計更新（count++、last_seen更新）
+5. UIに「原因を自分の言葉で1行」入力欄を表示 → attempt_id付きで `saveSelfNote`（スキップ可だが毎回促す）
+
+## 8. フロントエンド仕様（スマホ最優先・1画面遷移）
+
+1. **ホーム**：「今日の問題」リスト（getToday）。未回答0なら[問題を作る]ボタン → generate。上部に**ストリーク日数**と**今日のボトルネック1つ**（「今日はこれを潰すと効く：range の +1 忘れ」）を表示。modelの`notice`があればバナー
+2. **問題画面**：問題文・条件・実行例 → `textarea`（monospace・スペルチェックoff・autocapitalize/autocorrect off・Tabで字下げ2スペース挿入）→ [▶ 実行] → 出力/Traceback表示エリア → [採点する]（実行済みのみ活性）
+3. **採点結果**：hint段階＝ヒント表示＋[修正して再実行][答えを見る]。full段階＝判定・正解コード・解説 → 原因1行入力（grade応答の `attempt_id` を保持して送信）→ [保存して次へ]
+4. **Pyodideと安全装置（whileを学ぶため必須）**：
+   - 初回[実行]タップ時に遅延ロード（「Python起動中…」表示）
+   - **実行は必ず Web Worker 内**。メインスレッドで走らせない（UIが固まらない）
+   - **無限ループ対策**：実行に5秒のタイムアウトを設け、超過したらWorkerを `terminate()` して「実行が5秒を超えました。無限ループ（whileの条件が常にTrueなど）かもしれません」と表示。次回実行用にWorkerを再生成
+   - `sys.stdout`/`stderr` を `io.StringIO` にリダイレクトして取得、例外は `traceback.format_exc()` で全文取得
+   - `input()` は問題側で使わせない（§6のシステム指示で禁止済み）。万一コードに含まれたら実行前に検知して注意表示
+5. **オフライン時の挙動**：getToday/generate/grade は通信必須。オフラインなら「採点にはネット接続が必要です」と明示（黙って失敗しない）。**Pyodideでの[実行]だけはオフライン可**なので、圏外でも書いて試すことはできる旨を案内
+6. **PWA**：manifest＋Service WorkerでアプリシェルとPyodideをキャッシュ（2回目以降の[実行]はオフライン可）。ホーム画面追加を初回案内。Foldの内外画面の幅変化に追従するレスポンシブ
+7. UIテキストは全て日本語。配色はダーク基調（深夜の練習を想定）
+
+## 9. セキュリティ（ゼロトラスト設計）
+
+原則「**決して信頼せず、常に検証する**」を個人アプリ規模に翻訳して実装する。
+
+1. **明示的な検証（Verify explicitly）**：全リクエストで毎回APP_TOKEN照合（セッションという暗黙の信頼を作らない）。**LLMも信頼しない**——応答はスキーマ検証を通るまで保存禁止。クライアント入力（コード文字列等）は長さ・型を検証してからプロンプトに渡す
+2. **最小権限（Least privilege）**：GeminiキーはGAS Script Propertiesのみ、フロントには秘密を一切置かない。`appsscript.json` の `oauthScopes` は `spreadsheets` と `script.external_request` の2つに限定明記。既存の日記GASとはプロジェクト・鍵・シートを完全分離（侵害の横展開を遮断）
+3. **侵害前提（Assume breach）**：構成要素ごとの被害想定と対処をREADMEに明記——フロント流出→TOKENのみ露出（キーは無事。即ローテ手順記載）／シート流出→学習ログのみ（**個人情報を最初から入れないデータ最小化**で被害を設計段階で限定）／Gemini無料枠は入力が学習利用され得る前提で、固有名詞・個人情報を問題文やコードに含めない
+4. **信頼境界の一点集約**：公開側（GitHub Pages＝静的・秘密なし）と実行側（GAS＝ポリシー施行点）を分離し、検証はGASの入口1箇所に集約
+5. **クライアント設定の扱い（重要）**：`config.js`（GAS URLとTOKEN）はソースに置かない。**GitHub ActionsがRepository Secrets（`GAS_URL` / `APP_TOKEN`）からデプロイ時に生成してPagesへ注入**する（.gitignoreのままではPagesに届かず動かないため、この方式が必須）。なお**ブラウザに配信された時点でTOKENは公開情報とみなす**——その役割は乱用への摩擦であり、本丸の防御は§5の日次予算・即ローテ手順・個人情報ゼロ設計。よってリポジトリはpublicで問題ない（コミット履歴含め秘密を一切置かないこと）
+
+## 10. シードデータ（setup.jsで投入。2026-06-12時点のNotionシステムから移植）
+
+concepts 初期状態：
+```
+print: 習得, no_review=TRUE
+def_args_return(def/引数/return): 練習中
+for_range: 練習中
+if_else: 練習中
+mod(剰余%): 練習中
+total(total累積): 習得, due=2026-06-18, stability=7
+for_if(for+if組合せ): 習得, due=2026-06-18, stability=7
+max_search(最大値/最小値探索): 練習中   ← 最優先弱点
+traceback(Tracebackを読む): 未, prereq=なし（常時並行扱い・新規解放の対象外でhint側で育てる）
+while: 未, prereq=for_range
+str_fstring(文字列/f-string): 未, prereq=print
+list_basic(list/append/index/slice): 未, prereq=for_range
+dict_basic(辞書): 未, prereq=list_basic
+try_except(エラー処理try/except・fail closed): 未, prereq=list_basic
+file_io(ファイル読み書き): 未, prereq=str_fstring, list_basic
+sec_stdlib(セキュリティ標準ライブラリ入門: hashlib/secrets/datetime/re): 未, prereq=dict_basic, try_except
+capstone_zt(卒業制作: ミニ・ゼロトラストゲート): 未, prereq=file_io, sec_stdlib
+```
+mistakes 初期値：`未定義変数(1) / range+1忘れ(2) / 比較対象ミス(1) / 更新方向逆(1) / return忘れ(1) / スペルミス(1) / 初期値設計(2)`
+config：`last_problem_number=30`（旧Notion問題集の㉚まで使用済み。本アプリは㉛=31から）
+
+## 11. モチベーション設計（行動科学レイヤー）
+
+長期記憶はFSRSが担い、継続意欲はこのレイヤーが担う。設計原則：**報酬で釣らず、自律性と有能感を支える「情報的フィードバック」に徹する**（統制的な報酬は内発的動機を毀損し得るため、ポイント・バッジの乱発は採用しない）。
+
+**Phase 1 に含めるもの：**
+- **ストリーク表示**：attemptsの日付から連続学習日数を算出しホームに表示（追加テーブル不要）
+- **完了サマリ（小さな勝利の可視化）**：その日の問題を解き終えたら「今日の進歩」を1画面表示——正答数・昇級した概念・前回からの改善点をコードが組み立てる（進歩の感覚こそ最大の動機）
+- **難易度モニタリング**：§6の難易度クランプ（正答率75〜90%帯の維持）
+
+**Phase 2 に含めるもの：**
+- **ストリークフリーズ**：週1回まで自動で穴埋め（完璧主義による「1日切れたら全部やめる」離脱を防ぐ赦しの設計）
+- **実用ツール解放（アイデンティティ報酬・本命）**：節目の概念を習得するたび、実際に使えるスクリプトを「解放」。音楽系——str_fstring習得→セットリスト整形／list習得→サンプル名一括リネーム／dict習得→BPM・キー管理帳。セキュリティ系——dict習得→簡易ポリシーエンジン（誰に何を許可するかの判定表）／try_except習得→fail closedの門番関数／file_io習得→アクセスログ異常検知／sec_stdlib習得→トークン生成器・ファイル改ざん検知（hashlib）。学習が「KemuriBeatの道具」と「セキュリティの腕」の両方に直結する
+- **卒業制作（全ツリー踏破の最終解放）＝ミニ・ゼロトラストゲート**：毎リクエストのトークン検証・許可リスト判定・失敗ログ記録・fail closedを備えた小さな門番をPythonで自作する。**参考実装はpython-dojo自身のGAS門番（§5・§9）**——自分が毎日使ってきた学習アプリの守りを、卒業時には自分で読めて、作り直せるようになるのがゴール
+- **テーマ選択（自律性）**：その日の題材（音楽／日常／おまかせ）を本人がタップで選択
+- **週次ふりかえり**：日曜に1週間の進歩サマリを自動生成（Notion日記ミラーと統合）
+- **デロード週**：高負荷が3週続いたら4週目は復習のみの軽い週をコードが提案（スポーツ科学のピリオダイゼーション。燃え尽き防止）
+
+## 12. フェーズ分割
+
+**Phase 1（MVP・最優先）**：§2〜§11(Phase1分)の全コアループ。受け入れ基準：
+- スマホChromeでホーム→生成→解答→[実行]→（不正解なら）ヒント→修正→full採点→原因1行保存まで一気通貫で通る
+- **正誤がコードのstdout比較で確定**し、LLMが落ちても正解/不正解は判定できる
+- **whileの無限ループを書いても5秒でWorkerが止まり、UIが固まらない**
+- attemptsに行が増え（attempt_id発番）、conceptsのdue/stateが更新され、再度generateすると復習・難易度に反映されている
+- ホームにストリーク日数と今日のボトルネックが出る
+- Gemini 429/404時にmodel_chainのフォールバックが動き、必要なら通知バナーが出る
+- 個人情報・固有名詞が問題文／コードに含まれない（§9のデータ最小化）
+- リポジトリ内（コミット履歴含む）にTOKEN・APIキーが一切存在しない
+
+**Phase 2（MVP動作確認後）**：
+- 毎朝7時の時間トリガーで自動プリ生成（開いたら今日の問題が待っている状態）
+- 統計画面（習得マップ・正答率推移・ミスパターン推移）
+- 週次サマリをNotion日記へミラー（既存日記DBへ。別トークン）
+- CodeMirror 6導入（シンタックスハイライト）／Groqフォールバック追加
+
+## 13. 開発・デプロイ手順（README.mdに詳述すること）
+
+1. `clasp login` → `clasp create --type standalone --title python-dojo` → gas/と紐付け → `clasp push`
+2. GASエディタで `setup()` を1回実行（シート自動作成＋シード投入＋SPREADSHEET_ID保存）
+3. Script Properties に `GEMINI_API_KEY` / `APP_TOKEN` を設定 → ウェブアプリとしてデプロイ → URL取得
+4. GitHubリポジトリの Settings → Secrets and variables → Actions に `GAS_URL` と `APP_TOKEN` を登録 → pushすると deploy.yml がconfig.jsを生成しGitHub Pagesへ自動デプロイ（PagesのソースはGitHub Actionsを選択）
+5. スマホでURLを開き、ホーム画面に追加
+
+## 14. コーディング方針
+
+- コメントは日本語。初心者の持ち主が後から読んで追える粒度で
+- 1ファイル300行以内目安・関数は単一責務
+- LLM応答は必ずスキーマ検証してから保存（信用しない）
+- 失敗時はユーザーに日本語で「何をどう再試行すべきか」を表示（黙って失敗しない）

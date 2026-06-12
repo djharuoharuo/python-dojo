@@ -1,0 +1,14 @@
+{
+  "name": "python-dojo-build",
+  "private": true,
+  "description": "ts-fsrs を GAS 用にバンドルするビルド設定（フロントには npm 依存を持ち込まない）",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "ts-fsrs": "^5.2.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
