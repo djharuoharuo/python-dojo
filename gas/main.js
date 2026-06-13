@@ -32,8 +32,9 @@ function handleRequest_(e) {
     if (action === 'getToday') return actionGetToday_();
     if (action === 'clearNotice') { setConf_('model_notice', ''); return { ok: true }; }
 
-    // 書き込み系はスクリプトロックで直列化（採番・FSRS更新の競合を根絶）
-    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote') {
+    // 書き込み系＋予算消費系はスクリプトロックで直列化
+    // （採番・FSRS更新の競合と、予算カウンタ llm_budget_used の競合を根絶）
+    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' || action === 'ask') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
@@ -42,6 +43,7 @@ function handleRequest_(e) {
         if (action === 'generate') return actionGenerate_(body);
         if (action === 'grade') return actionGrade_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
+        if (action === 'ask') return actionAsk_(body);
       } finally {
         lock.releaseLock();
       }

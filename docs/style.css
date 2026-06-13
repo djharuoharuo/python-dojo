@@ -160,6 +160,54 @@ button:disabled { opacity: 0.35; }
 
 .loading { color: var(--muted); font-size: 0.9rem; padding: 8px 0; }
 
+/* ---- 詰まったら質問・先回りヒント ---- */
+.ask-area {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+.ask-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.hint-badge {
+  color: var(--accent2);
+  font-size: 0.74rem;
+  font-weight: bold;
+  border: 1px solid var(--accent2);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.ask-area .btn-ghost { margin-top: 8px; }
+#ask-input {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--panel2);
+  border: 1px solid #2c3040;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px; /* スマホのズーム防止に16px以上 */
+  resize: vertical;
+}
+#ask-input:focus { outline: 2px solid var(--accent2); }
+.ask-answer {
+  background: var(--panel2);
+  border-left: 3px solid var(--accent2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 8px;
+  font-size: 0.92rem;
+}
+.ask-q { color: var(--muted); font-size: 0.82rem; margin-bottom: 4px; }
+.ask-a { white-space: pre-wrap; }
+.summary-sub { color: var(--muted); font-size: 0.9rem; }
+
 /* ---- ヒント・結果 ---- */
 #hint-area, #result-area {
   background: var(--panel);
