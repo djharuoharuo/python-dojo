@@ -69,6 +69,21 @@
     <div id="run-status" class="loading" hidden></div>
     <pre id="run-output" hidden></pre>
 
+    <!-- 詰まったら質問（自由文・先回りヒント。使うと hint_used を記録 §7） -->
+    <div id="ask-area" class="ask-area">
+      <div class="ask-head">
+        <span>❓ 詰まったら先生に聞く</span>
+        <span id="hint-badge" class="hint-badge" hidden>💡 ヒント使用中</span>
+      </div>
+      <button id="btn-hint" class="btn-ghost">次の一歩のヒントを1つもらう</button>
+      <textarea id="ask-input" rows="2" spellcheck="false" autocapitalize="off"
+        autocorrect="off" autocomplete="off"
+        placeholder="自由に質問（例: forの書き方がわからない / なぜエラーになる？）"></textarea>
+      <button id="btn-ask" class="btn-ghost">この質問を送る</button>
+      <div id="ask-status" class="loading" hidden></div>
+      <div id="ask-answers"></div>
+    </div>
+
     <!-- ヒント段階の結果（§7 2段階方式） -->
     <div id="hint-area" hidden>
       <h3>💡 ヒント</h3>

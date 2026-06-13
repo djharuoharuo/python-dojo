@@ -10,9 +10,9 @@ const state = {
   current: null,     // いま解いている問題
   ran: false,        // [実行]済みか（採点ボタンの活性条件 §7）
   lastRun: { stdout: '', stderr: '' },
-  hintUsed: false,   // この問題で一度でもヒントを見たか
+  hintUsed: false,   // この問題で一度でもヒント・質問を使ったか
   attemptId: null,   // full採点が発番したID（saveSelfNote用）
-  session: { total: 0, correct: 0, close: 0, changes: [] } // 今日の進歩サマリ素材
+  session: { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] } // 今日の進歩サマリ素材
 };
 
 // ---------------------------------------------------------------------
@@ -147,6 +147,11 @@ function openProblem(p) {
   $('easy-check').checked = false;
   $('btn-grade').disabled = true;
   $('self-note-input').value = '';
+  // 質問欄をまっさらに戻す
+  $('ask-input').value = '';
+  $('ask-answers').innerHTML = '';
+  $('ask-status').hidden = true;
+  $('hint-badge').hidden = true;
   show('screen-problem');
 }
 
@@ -223,7 +228,7 @@ async function grade(stage) {
       easy: $('easy-check').checked
     });
     if (res.stage === 'hint') {
-      state.hintUsed = true; // 一度でもヒントを見たら最終 hint_used=true（§7）
+      markHintUsed(); // 一度でもヒントを見たら最終 hint_used=true（§7）
       renderHints(res.hints);
     } else {
       renderFullResult(res);
@@ -234,6 +239,51 @@ async function grade(stage) {
   } finally {
     $('run-status').hidden = true;
   }
+}
+
+// ---- 詰まったら質問（自由文・先回りヒント） ----
+// ワンタップのヒント。固定の質問文を送る（答えのコードは出さない約束はGAS側の家庭教師プロンプトが担保）
+$('btn-hint').onclick = () =>
+  askTutor('この問題で次にやるべき一歩を、答えのコードは書かずにヒントとして1つ教えてください。');
+$('btn-ask').onclick = () => askTutor($('ask-input').value.trim());
+
+async function askTutor(question) {
+  if (!question) { showError('質問を入力してから送ってください'); return; }
+  $('btn-hint').disabled = true;
+  $('btn-ask').disabled = true;
+  $('ask-status').hidden = false;
+  $('ask-status').textContent = '先生に聞いています…';
+  try {
+    const res = await api('ask', {
+      problem_id: state.current.problem_id,
+      code: $('editor').value,
+      question
+    });
+    appendAnswer(question, res.answer);
+    markHintUsed();        // 質問したら、この問題はヒントありで記録される（§7）
+    $('ask-input').value = '';
+  } catch (e) {
+    showError(e.message);  // 予算超過などは日本語メッセージがそのまま出る
+  } finally {
+    $('btn-hint').disabled = false;
+    $('btn-ask').disabled = false;
+    $('ask-status').hidden = true;
+  }
+}
+
+function appendAnswer(question, answer) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ask-answer';
+  wrap.innerHTML = `<div class="ask-q">❓ ${escapeHtml(question)}</div>` +
+    `<div class="ask-a">${escapeHtml(answer)}</div>`;
+  $('ask-answers').appendChild(wrap);
+  wrap.scrollIntoView({ behavior: 'smooth' });
+}
+
+// ヒント・質問・答えを見る のいずれかを使ったら印を付ける（記録と見た目を一致させる）
+function markHintUsed() {
+  state.hintUsed = true;
+  $('hint-badge').hidden = false;
 }
 
 function renderHints(hints) {
@@ -273,7 +323,10 @@ function renderFullResult(res) {
 
   // 今日の進歩サマリ用に記録
   state.session.total++;
-  if (res.verdict === '正解') state.session.correct++;
+  if (res.verdict === '正解') {
+    state.session.correct++;
+    if (state.hintUsed) state.session.hintCorrect++; // ヒントありの正解を別カウント
+  }
   if (res.verdict === '惜しい') state.session.close++;
   if (res.state_change) state.session.changes.push(res.state_change);
 }
@@ -325,15 +378,17 @@ function showSummary() {
   const s = state.session;
   const changes = s.changes.map((c) =>
     `<li>${escapeHtml(c.concept)}: ${c.from} → <b>${c.to}</b></li>`).join('');
+  const nohint = s.correct - s.hintCorrect; // ヒントなしで解けた数（昇級の材料になる §7）
   $('summary-body').innerHTML = `
     <p>解いた問題: <b>${s.total}問</b></p>
     <p>正解 <b>${s.correct}</b> ・ 惜しい <b>${s.close}</b> ・ 不正解 <b>${s.total - s.correct - s.close}</b></p>
+    <p class="summary-sub">うちノーヒント正解 <b>${nohint}</b> ・ ヒントあり正解 <b>${s.hintCorrect}</b></p>
     ${changes ? `<p>概念の変化:</p><ul>${changes}</ul>` : ''}
     <p>${s.correct === s.total ? '全問正解！この調子 💪' : '間違えた問題こそ伸びしろ。明日の出題に反映されます'}</p>`;
   show('screen-summary');
 }
 $('btn-summary-home').onclick = () => {
-  state.session = { total: 0, correct: 0, close: 0, changes: [] };
+  state.session = { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] };
   loadHome();
 };
 
