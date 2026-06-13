@@ -15,6 +15,11 @@
 
 * { box-sizing: border-box; }
 
+/* hidden属性を常に最優先で効かせる。
+   これが無いと display:flex/block を指定した要素（バナーやボタン）が
+   hidden を無視して出っぱなしになり、[OK]を押しても消えない不具合になる */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   padding: 12px 14px calc(24px + env(safe-area-inset-bottom));
