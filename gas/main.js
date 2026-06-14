@@ -34,9 +34,8 @@ function handleRequest_(e) {
     if (action === 'clearNotice') { setConf_('model_notice', ''); return { ok: true }; }
 
     // 書き込み系＋予算消費系はスクリプトロックで直列化
-    // （採番・FSRS更新の競合、予算カウンタ llm_budget_used、日記ブロック差し替えの競合を根絶）
-    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' ||
-        action === 'ask' || action === 'pushDiary') {
+    // （採番・FSRS更新の競合と、予算カウンタ llm_budget_used の競合を根絶）
+    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' || action === 'ask') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
@@ -46,7 +45,6 @@ function handleRequest_(e) {
         if (action === 'grade') return actionGrade_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
         if (action === 'ask') return actionAsk_(body);
-        if (action === 'pushDiary') return actionPushDiary_(body);
       } finally {
         lock.releaseLock();
       }
@@ -55,9 +53,6 @@ function handleRequest_(e) {
   } catch (err) {
     if (err && err.code === 'budget') return { error: 'budget', message: err.message };
     if (err && err.code === 'llm_failed') return { error: 'llm_failed', message: err.message };
-    // 日記連携の未設定・失敗は、学習本体を止めない軽いエラーとして返す
-    if (err && err.code === 'notion_unconfigured') return { error: 'notion_unconfigured', message: err.message };
-    if (err && err.code === 'notion_failed') return { error: 'notion_failed', message: err.message };
     return { error: 'internal', message: 'サーバ内部でエラーが発生しました（' + err.message + '）。もう一度お試しください' };
   }
 }

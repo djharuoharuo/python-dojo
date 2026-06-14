@@ -245,8 +245,9 @@ button:disabled { opacity: 0.35; }
 .hist-q { color: var(--accent2); font-size: 0.88rem; margin-top: 8px; }
 .hist-a { white-space: pre-wrap; font-size: 0.9rem; }
 
-/* ---- 日記記録 ---- */
-#diary-status { margin-top: 10px; }
+/* ---- 解答の途中保存（下書き） ---- */
+.draft-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.draft-status { color: var(--accent); font-size: 0.82rem; }
 
 /* ---- ヒント・結果 ---- */
 #hint-area, #result-area {

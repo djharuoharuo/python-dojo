@@ -30,9 +30,10 @@ function setup() {
 }
 
 // ---------------------------------------------------------------------
-// migrate — 既に setup() 済みのスプレッドシートに、後から追加したタブ・
-// configキーを補う（何度実行しても安全）。新機能の追加時にGASエディタから
-// 一度だけ手で実行する。setup() と違い既存データは消さない。
+// migrate — 既に setup() 済みのスプレッドシートに、後から追加したタブを
+// 補う（何度実行しても安全）。新機能の追加時にGASエディタから一度だけ手で
+// 実行する。setup() と違い既存データは消さない。
+// 例：履歴機能で追加した asks タブを既存シートに足す。
 // ---------------------------------------------------------------------
 function migrate() {
   var ss = getSpreadsheet_();
@@ -45,16 +46,6 @@ function migrate() {
     sheet.getDataRange().setNumberFormat('@');
     sheet.setFrozenRows(1);
     Logger.log('タブを作成しました: ' + name);
-  });
-
-  // 不足しているconfigキーを補う（日記連携の置き換え管理用など、後付け設定）
-  var conf = getConfigAll_();
-  var defaults = { diary_block_id: '', diary_block_date: '' };
-  Object.keys(defaults).forEach(function (k) {
-    if (conf[k] === undefined) {
-      appendRowObj_('config', { key: k, value: defaults[k] });
-      Logger.log('config に追加しました: ' + k);
-    }
   });
 
   Logger.log('migrate 完了');
