@@ -35,7 +35,7 @@ $('notice-ok').onclick = async () => {
 };
 
 function show(screen) {
-  ['screen-home', 'screen-problem', 'screen-summary'].forEach((id) => {
+  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history'].forEach((id) => {
     $(id).hidden = (id !== screen);
   });
   window.scrollTo(0, 0);
@@ -110,6 +110,57 @@ $('btn-generate').onclick = async () => {
     $('home-loading').textContent = '読み込み中…';
   }
 };
+
+// ---------------------------------------------------------------------
+// 履歴画面（過去問・自分の解答・した質問を見返す §5 getHistory）
+// ---------------------------------------------------------------------
+$('btn-history').onclick = loadHistory;
+$('btn-history-back').onclick = loadHome;
+
+async function loadHistory() {
+  show('screen-history');
+  $('history-loading').hidden = false;
+  $('history-list').innerHTML = '';
+  try {
+    const data = await api('getHistory', { limit: 40 });
+    renderHistory(data.items || []);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    $('history-loading').hidden = true;
+  }
+}
+
+function renderHistory(items) {
+  const list = $('history-list');
+  list.innerHTML = '';
+  if (items.length === 0) {
+    list.innerHTML = '<p class="progress">まだ解答の記録がありません。問題を解くとここに残ります。</p>';
+    return;
+  }
+  items.forEach((it) => {
+    // <details> でタップ開閉（JSなしで軽い）
+    const det = document.createElement('details');
+    det.className = 'history-item';
+    const mark = it.verdict === '正解' ? '✅' : (it.verdict === '惜しい' ? '🟡' : '❌');
+    const hint = it.hint_used ? ' 💡' : '';
+    const date = String(it.timestamp || '').slice(5, 10).replace('-', '/');
+    const num = it.number ? `問${it.number} ` : '';
+    const asks = (it.asks || []).map((a) =>
+      `<div class="hist-q">❓ ${escapeHtml(a.question)}</div>` +
+      `<div class="hist-a">${escapeHtml(a.answer)}</div>`).join('');
+    det.innerHTML =
+      `<summary>${mark} <b>${num}${escapeHtml(it.title)}</b>` +
+      `<span class="hist-meta">${date} ・ ${escapeHtml(it.type)}${hint}</span></summary>` +
+      `<div class="hist-body">` +
+        (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
+        `<div class="expl-label">自分の解答</div><pre>${escapeHtml(it.code || '(なし)')}</pre>` +
+        (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
+        (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
+      `</div>`;
+    list.appendChild(det);
+  });
+}
 
 // ---------------------------------------------------------------------
 // 問題画面
@@ -386,7 +437,22 @@ function showSummary() {
     ${changes ? `<p>概念の変化:</p><ul>${changes}</ul>` : ''}
     <p>${s.correct === s.total ? '全問正解！この調子 💪' : '間違えた問題こそ伸びしろ。明日の出題に反映されます'}</p>`;
   show('screen-summary');
+  if (s.total > 0) pushDiaryToNotion(); // その日の学習を日記へ自動記録（§5 pushDiary）
 }
+
+// 今日の学習を日記（Notion）へ書き出す。未設定・失敗でも学習体験は止めない
+async function pushDiaryToNotion() {
+  $('diary-status').hidden = false;
+  $('diary-status').textContent = '📔 日記に記録しています…';
+  try {
+    const res = await api('pushDiary', {});
+    $('diary-status').textContent = res.message || '📔 日記に記録しました';
+  } catch (e) {
+    $('diary-status').textContent = '📔 日記への記録はスキップされました（' + e.message + '）';
+  }
+}
+$('btn-diary').onclick = pushDiaryToNotion;
+
 $('btn-summary-home').onclick = () => {
   state.session = { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] };
   loadHome();

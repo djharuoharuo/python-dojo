@@ -29,6 +29,37 @@ function setup() {
   Logger.log('次の手順: Script Properties に GEMINI_API_KEY と APP_TOKEN を設定 → ウェブアプリとしてデプロイ');
 }
 
+// ---------------------------------------------------------------------
+// migrate — 既に setup() 済みのスプレッドシートに、後から追加したタブ・
+// configキーを補う（何度実行しても安全）。新機能の追加時にGASエディタから
+// 一度だけ手で実行する。setup() と違い既存データは消さない。
+// ---------------------------------------------------------------------
+function migrate() {
+  var ss = getSpreadsheet_();
+
+  // 不足しているタブを作る（列定義は store.js の SHEET_HEADERS が唯一の正）
+  Object.keys(SHEET_HEADERS).forEach(function (name) {
+    if (ss.getSheetByName(name)) return;
+    var sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, SHEET_HEADERS[name].length).setValues([SHEET_HEADERS[name]]);
+    sheet.getDataRange().setNumberFormat('@');
+    sheet.setFrozenRows(1);
+    Logger.log('タブを作成しました: ' + name);
+  });
+
+  // 不足しているconfigキーを補う（日記連携の置き換え管理用など、後付け設定）
+  var conf = getConfigAll_();
+  var defaults = { diary_block_id: '', diary_block_date: '' };
+  Object.keys(defaults).forEach(function (k) {
+    if (conf[k] === undefined) {
+      appendRowObj_('config', { key: k, value: defaults[k] });
+      Logger.log('config に追加しました: ' + k);
+    }
+  });
+
+  Logger.log('migrate 完了');
+}
+
 // §10 concepts 初期状態（2026-06-12時点のNotionシステムから移植）
 function seedConcepts_() {
   var rows = [

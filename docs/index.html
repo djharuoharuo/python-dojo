@@ -36,6 +36,17 @@
     <div id="problem-list"></div>
     <button id="btn-generate" class="btn-primary" hidden>問題を作る</button>
     <div id="home-loading" class="loading">読み込み中…</div>
+    <button id="btn-history" class="btn-ghost">📖 これまでの履歴を見る</button>
+  </section>
+
+  <!-- 履歴画面（過去問・自分の解答・した質問を見返す） -->
+  <section id="screen-history" hidden>
+    <header class="problem-header">
+      <button id="btn-history-back" class="btn-small">← ホーム</button>
+      <span class="screen-title">📖 これまでの履歴</span>
+    </header>
+    <div id="history-loading" class="loading">読み込み中…</div>
+    <div id="history-list"></div>
   </section>
 
   <!-- 問題画面 -->
@@ -112,6 +123,8 @@
   <section id="screen-summary" hidden>
     <h1>今日の進歩 🎉</h1>
     <div id="summary-body"></div>
+    <div id="diary-status" class="loading" hidden></div>
+    <button id="btn-diary" class="btn-ghost">📔 日記にもう一度記録する</button>
     <button id="btn-summary-home" class="btn-primary">ホームへ</button>
   </section>
 
