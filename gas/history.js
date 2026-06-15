@@ -24,6 +24,9 @@ function actionGetHistory_(body) {
   var attempts = readRows_('attempts');
   var items = attempts.slice(-limit).reverse().map(function (a) {
     var pl = problems[a.problem_id] || {};
+    // 採点時に保存したヒント・フル解説（古い記録には無いので空に倒す）
+    var feedback = {};
+    try { feedback = JSON.parse(a.feedback_json || '{}') || {}; } catch (e) { feedback = {}; }
     return {
       timestamp: a.timestamp,
       number: pl.number || '',
@@ -37,6 +40,8 @@ function actionGetHistory_(body) {
       code: a.code,
       expected_output: pl.expected_output || '',
       stdout: a.stdout,
+      hints: Array.isArray(feedback.hints) ? feedback.hints : [],
+      explanation: feedback.explanation || null,
       asks: asksByProblem[a.problem_id] || []
     };
   });

@@ -13,6 +13,10 @@ function actionGrade_(body) {
   var stage = body.stage === 'full' ? 'full' : 'hint';
   var hintUsed = body.hint_used === true;
   var easy = body.easy === true; // UIの「余裕だった」タップ
+  // この問題で表示したヒント（履歴に残すためフロントから受け取る）
+  var hints = Array.isArray(body.hints)
+    ? body.hints.filter(function (h) { return typeof h === 'string' && h; }).slice(0, 5)
+    : [];
   if (!problemId) return { error: 'bad_request', message: 'problem_id がありません。ホームからやり直してください' };
   if (!code) return { error: 'bad_request', message: 'コードが空です。コードを書いてから採点してください' };
   if (code.length > 20000 || stdout.length > 20000 || stderr.length > 20000) {
@@ -32,7 +36,7 @@ function actionGrade_(body) {
     return finalizeAttempt_(prow, payload, {
       code: code, stdout: stdout, stderr: stderr,
       verdict: '正解', hintUsed: hintUsed, easy: easy,
-      errorPattern: 'なし', explanation: null, modelUsed: ''
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints
     });
   }
 
@@ -64,7 +68,7 @@ function actionGrade_(body) {
     code: code, stdout: stdout, stderr: stderr,
     verdict: verdict, hintUsed: hintUsed, easy: false,
     errorPattern: explanation ? explanation.error_pattern : 'その他',
-    explanation: explanation, modelUsed: modelUsed
+    explanation: explanation, modelUsed: modelUsed, hints: hints
   });
 }
 
@@ -96,7 +100,9 @@ function finalizeAttempt_(prow, payload, r) {
     code: r.code,
     stdout: r.stdout,
     stderr: r.stderr,
-    model_used: r.modelUsed
+    model_used: r.modelUsed,
+    // もらったヒントとフル解説を履歴用に保存（後から振り返れるように §5）
+    feedback_json: JSON.stringify({ hints: r.hints || [], explanation: r.explanation || null })
   });
   updateRowWhere_('problems', 'problem_id', prow.problem_id, { status: '採点済' });
 

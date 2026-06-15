@@ -38,14 +38,27 @@ function setup() {
 function migrate() {
   var ss = getSpreadsheet_();
 
-  // 不足しているタブを作る（列定義は store.js の SHEET_HEADERS が唯一の正）
   Object.keys(SHEET_HEADERS).forEach(function (name) {
-    if (ss.getSheetByName(name)) return;
-    var sheet = ss.insertSheet(name);
-    sheet.getRange(1, 1, 1, SHEET_HEADERS[name].length).setValues([SHEET_HEADERS[name]]);
-    sheet.getDataRange().setNumberFormat('@');
-    sheet.setFrozenRows(1);
-    Logger.log('タブを作成しました: ' + name);
+    var headers = SHEET_HEADERS[name];
+    var sheet = ss.getSheetByName(name);
+
+    // 不足しているタブは新規作成（列定義は store.js の SHEET_HEADERS が唯一の正）
+    if (!sheet) {
+      sheet = ss.insertSheet(name);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.getDataRange().setNumberFormat('@');
+      sheet.setFrozenRows(1);
+      Logger.log('タブを作成しました: ' + name);
+      return;
+    }
+
+    // 既存タブで列が足りなければヘッダーを後付け（例: attempts に feedback_json）。
+    // 既存データ行はその列が空になるだけで読み書きは壊れない
+    if (sheet.getLastColumn() < headers.length) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.getRange(1, 1, sheet.getMaxRows(), headers.length).setNumberFormat('@');
+      Logger.log('列を追加しました: ' + name + '（' + headers.join(', ') + '）');
+    }
   });
 
   Logger.log('migrate 完了');
