@@ -29,6 +29,28 @@ function setup() {
   Logger.log('次の手順: Script Properties に GEMINI_API_KEY と APP_TOKEN を設定 → ウェブアプリとしてデプロイ');
 }
 
+// ---------------------------------------------------------------------
+// migrate — 既に setup() 済みのスプレッドシートに、後から追加したタブを
+// 補う（何度実行しても安全）。新機能の追加時にGASエディタから一度だけ手で
+// 実行する。setup() と違い既存データは消さない。
+// 例：履歴機能で追加した asks タブを既存シートに足す。
+// ---------------------------------------------------------------------
+function migrate() {
+  var ss = getSpreadsheet_();
+
+  // 不足しているタブを作る（列定義は store.js の SHEET_HEADERS が唯一の正）
+  Object.keys(SHEET_HEADERS).forEach(function (name) {
+    if (ss.getSheetByName(name)) return;
+    var sheet = ss.insertSheet(name);
+    sheet.getRange(1, 1, 1, SHEET_HEADERS[name].length).setValues([SHEET_HEADERS[name]]);
+    sheet.getDataRange().setNumberFormat('@');
+    sheet.setFrozenRows(1);
+    Logger.log('タブを作成しました: ' + name);
+  });
+
+  Logger.log('migrate 完了');
+}
+
 // §10 concepts 初期状態（2026-06-12時点のNotionシステムから移植）
 function seedConcepts_() {
   var rows = [

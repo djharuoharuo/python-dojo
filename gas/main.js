@@ -30,6 +30,7 @@ function handleRequest_(e) {
   try {
     // 読み取り系はロック不要
     if (action === 'getToday') return actionGetToday_();
+    if (action === 'getHistory') return actionGetHistory_(body);
     if (action === 'clearNotice') { setConf_('model_notice', ''); return { ok: true }; }
 
     // 書き込み系＋予算消費系はスクリプトロックで直列化
@@ -78,7 +79,6 @@ function actionGetToday_() {
     return c.state === '習得' && c.no_review !== 'TRUE' && c.due && c.due <= today;
   }).length;
 
-  var top = topMistakes_()[0];
   return {
     problems: problems,
     summary: {
@@ -86,10 +86,30 @@ function actionGetToday_() {
       total: concepts.length,
       due_count: dueCount,
       streak: calcStreak_(),
-      bottleneck: top ? top.pattern : ''
+      bottleneck: recentBottleneck_()
     },
     notice: getConf_('model_notice', '')
   };
+}
+
+// 「今のボトルネック」: 直近の解答（最大20件）で最も多い error_pattern を返す。
+// 苦手を克服すると表示も切り替わる（通算ではなく“いまの弱点”を指すため）。
+// 直近にミスが無ければ通算トップのmistakeにフォールバック（情報を空にしない）
+function recentBottleneck_() {
+  var recent = readRows_('attempts').slice(-20);
+  var counts = {};
+  recent.forEach(function (a) {
+    var p = a.error_pattern;
+    if (p && p !== 'なし') counts[p] = (counts[p] || 0) + 1;
+  });
+  var best = '';
+  var bestN = 0;
+  Object.keys(counts).forEach(function (p) {
+    if (counts[p] > bestN) { bestN = counts[p]; best = p; }
+  });
+  if (best) return best;
+  var top = topMistakes_()[0];
+  return top ? top.pattern : '';
 }
 
 // attempts の日付から連続学習日数を算出（今日または昨日から途切れず遡れる日数）

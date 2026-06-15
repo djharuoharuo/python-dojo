@@ -11,9 +11,51 @@ const state = {
   ran: false,        // [実行]済みか（採点ボタンの活性条件 §7）
   lastRun: { stdout: '', stderr: '' },
   hintUsed: false,   // この問題で一度でもヒント・質問を使ったか
+  hints: [],         // この問題で表示したヒント（途中保存・復元用）
+  asks: [],          // この問題で先生にした質問と回答（途中保存・復元用）
   attemptId: null,   // full採点が発番したID（saveSelfNote用）
   session: { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] } // 今日の進歩サマリ素材
 };
+
+// ---------------------------------------------------------------------
+// 解答の途中保存（下書き）。ブラウザ内（localStorage）に問題ごとに保存する。
+// コード・もらったヒント・した質問をまとめて残し、同じ問題を開くと続きから再開できる。
+// 通信もGASも使わないので、圏外でも保存でき、サーバ更新も不要。
+// ---------------------------------------------------------------------
+const DRAFT_PREFIX = 'dojo-draft-';
+const draftKey = (id) => DRAFT_PREFIX + id;
+
+function saveDraft(showStatus) {
+  if (!state.current) return;
+  try {
+    localStorage.setItem(draftKey(state.current.problem_id), JSON.stringify({
+      code: $('editor').value,
+      hints: state.hints,
+      asks: state.asks,
+      hintUsed: state.hintUsed
+    }));
+    if (showStatus) flashDraftSaved();
+  } catch (e) {
+    // 保存容量超過などでも学習は止めない（黙って失敗しない方針だが下書きは補助機能）
+  }
+}
+
+function loadDraft(id) {
+  try { return JSON.parse(localStorage.getItem(draftKey(id)) || 'null'); }
+  catch (e) { return null; }
+}
+
+function clearDraft(id) {
+  try { localStorage.removeItem(draftKey(id)); } catch (e) { /* 無くてもよい */ }
+}
+
+let draftStatusTimer = null;
+function flashDraftSaved() {
+  const el = $('draft-status');
+  el.hidden = false;
+  clearTimeout(draftStatusTimer);
+  draftStatusTimer = setTimeout(() => { el.hidden = true; }, 2000);
+}
 
 // ---------------------------------------------------------------------
 // バナー（通知・エラー）
@@ -35,7 +77,7 @@ $('notice-ok').onclick = async () => {
 };
 
 function show(screen) {
-  ['screen-home', 'screen-problem', 'screen-summary'].forEach((id) => {
+  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history'].forEach((id) => {
     $(id).hidden = (id !== screen);
   });
   window.scrollTo(0, 0);
@@ -112,12 +154,65 @@ $('btn-generate').onclick = async () => {
 };
 
 // ---------------------------------------------------------------------
+// 履歴画面（過去問・自分の解答・した質問を見返す §5 getHistory）
+// ---------------------------------------------------------------------
+$('btn-history').onclick = loadHistory;
+$('btn-history-back').onclick = loadHome;
+
+async function loadHistory() {
+  show('screen-history');
+  $('history-loading').hidden = false;
+  $('history-list').innerHTML = '';
+  try {
+    const data = await api('getHistory', { limit: 40 });
+    renderHistory(data.items || []);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    $('history-loading').hidden = true;
+  }
+}
+
+function renderHistory(items) {
+  const list = $('history-list');
+  list.innerHTML = '';
+  if (items.length === 0) {
+    list.innerHTML = '<p class="progress">まだ解答の記録がありません。問題を解くとここに残ります。</p>';
+    return;
+  }
+  items.forEach((it) => {
+    // <details> でタップ開閉（JSなしで軽い）
+    const det = document.createElement('details');
+    det.className = 'history-item';
+    const mark = it.verdict === '正解' ? '✅' : (it.verdict === '惜しい' ? '🟡' : '❌');
+    const hint = it.hint_used ? ' 💡' : '';
+    const date = String(it.timestamp || '').slice(5, 10).replace('-', '/');
+    const num = it.number ? `問${it.number} ` : '';
+    const asks = (it.asks || []).map((a) =>
+      `<div class="hist-q">❓ ${escapeHtml(a.question)}</div>` +
+      `<div class="hist-a">${escapeHtml(a.answer)}</div>`).join('');
+    det.innerHTML =
+      `<summary>${mark} <b>${num}${escapeHtml(it.title)}</b>` +
+      `<span class="hist-meta">${date} ・ ${escapeHtml(it.type)}${hint}</span></summary>` +
+      `<div class="hist-body">` +
+        (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
+        `<div class="expl-label">自分の解答</div><pre>${escapeHtml(it.code || '(なし)')}</pre>` +
+        (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
+        (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
+      `</div>`;
+    list.appendChild(det);
+  });
+}
+
+// ---------------------------------------------------------------------
 // 問題画面
 // ---------------------------------------------------------------------
 function openProblem(p) {
   state.current = p;
   state.ran = false;
   state.hintUsed = false;
+  state.hints = [];
+  state.asks = [];
   state.attemptId = null;
   state.lastRun = { stdout: '', stderr: '' };
 
@@ -147,11 +242,28 @@ function openProblem(p) {
   $('easy-check').checked = false;
   $('btn-grade').disabled = true;
   $('self-note-input').value = '';
-  // 質問欄をまっさらに戻す
+  // 質問欄・ヒント表示をまっさらに戻す
   $('ask-input').value = '';
   $('ask-answers').innerHTML = '';
   $('ask-status').hidden = true;
   $('hint-badge').hidden = true;
+  $('hint-list').innerHTML = '';
+  $('draft-status').hidden = true;
+
+  // 途中保存（下書き）があれば、コード・ヒント・質問を復元して続きから再開する
+  const draft = loadDraft(p.problem_id);
+  if (draft) {
+    if (typeof draft.code === 'string' && draft.code !== '') $('editor').value = draft.code;
+    if (Array.isArray(draft.hints) && draft.hints.length) {
+      state.hints = draft.hints;
+      fillHints(draft.hints);
+      $('hint-area').hidden = false;
+    }
+    if (Array.isArray(draft.asks)) {
+      draft.asks.forEach((a) => { state.asks.push(a); renderAsk(a.question, a.answer, false); });
+    }
+    if (draft.hintUsed) markHintUsed();
+  }
   show('screen-problem');
 }
 
@@ -167,6 +279,15 @@ $('editor').addEventListener('keydown', (e) => {
     t.selectionStart = t.selectionEnd = pos + 2;
   }
 });
+
+// 入力するたびに下書きを自動保存（打鍵のたびに書かないよう少し待つ）
+let draftSaveTimer = null;
+$('editor').addEventListener('input', () => {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => saveDraft(true), 600);
+});
+// 明示的な「下書き保存」ボタン（押した手応えが欲しい人向け。中身は自動保存と同じ）
+$('btn-save-draft').onclick = () => saveDraft(true);
 
 // ---- 実行（Pyodide / オフライン可 §8-5） ----
 $('btn-run').onclick = async () => {
@@ -259,9 +380,11 @@ async function askTutor(question) {
       code: $('editor').value,
       question
     });
-    appendAnswer(question, res.answer);
+    state.asks.push({ question, answer: res.answer });
+    renderAsk(question, res.answer, true);
     markHintUsed();        // 質問したら、この問題はヒントありで記録される（§7）
     $('ask-input').value = '';
+    saveDraft();           // 質問と回答も下書きに残す
   } catch (e) {
     showError(e.message);  // 予算超過などは日本語メッセージがそのまま出る
   } finally {
@@ -271,13 +394,14 @@ async function askTutor(question) {
   }
 }
 
-function appendAnswer(question, answer) {
+// 質問と回答を1件描画する（復元時は scroll=false で静かに並べ直す）
+function renderAsk(question, answer, scroll) {
   const wrap = document.createElement('div');
   wrap.className = 'ask-answer';
   wrap.innerHTML = `<div class="ask-q">❓ ${escapeHtml(question)}</div>` +
     `<div class="ask-a">${escapeHtml(answer)}</div>`;
   $('ask-answers').appendChild(wrap);
-  wrap.scrollIntoView({ behavior: 'smooth' });
+  if (scroll) wrap.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ヒント・質問・答えを見る のいずれかを使ったら印を付ける（記録と見た目を一致させる）
@@ -286,7 +410,7 @@ function markHintUsed() {
   $('hint-badge').hidden = false;
 }
 
-function renderHints(hints) {
+function fillHints(hints) {
   const ul = $('hint-list');
   ul.innerHTML = '';
   (hints || []).forEach((h) => {
@@ -294,8 +418,14 @@ function renderHints(hints) {
     li.textContent = h;
     ul.appendChild(li);
   });
+}
+
+function renderHints(hints) {
+  state.hints = hints || [];
+  fillHints(state.hints);
   $('hint-area').hidden = false;
   $('hint-area').scrollIntoView({ behavior: 'smooth' });
+  saveDraft(); // もらったヒントも下書きに残す
 }
 
 function renderFullResult(res) {
@@ -362,7 +492,8 @@ $('btn-next').onclick = async () => {
       showError(e.message); // メモ保存失敗でも先には進める
     }
   }
-  // 解き終えた問題をリストから外して次へ
+  // 解き終えたので下書きは破棄し、リストから外して次へ
+  clearDraft(state.current.problem_id);
   state.problems = state.problems.filter((p) => p.problem_id !== state.current.problem_id);
   if (state.problems.length > 0) {
     openProblem(state.problems[0]);
@@ -387,6 +518,7 @@ function showSummary() {
     <p>${s.correct === s.total ? '全問正解！この調子 💪' : '間違えた問題こそ伸びしろ。明日の出題に反映されます'}</p>`;
   show('screen-summary');
 }
+
 $('btn-summary-home').onclick = () => {
   state.session = { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] };
   loadHome();

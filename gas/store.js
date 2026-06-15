@@ -17,6 +17,8 @@ var SHEET_HEADERS = {
     'attempt_id', 'timestamp', 'problem_id', 'concept_id', 'type', 'verdict',
     'hint_used', 'error_pattern', 'self_note', 'code', 'stdout', 'stderr', 'model_used'
   ],
+  // 先生にした質問とその回答（履歴閲覧・日記出力の素材。§5 ask が追記する）
+  asks: ['ask_id', 'timestamp', 'problem_id', 'concept_id', 'question', 'answer', 'model_used'],
   mistakes: ['pattern', 'count', 'last_seen'],
   config: ['key', 'value']
 };
@@ -61,6 +63,17 @@ function readRows_(name) {
     rows.push(row);
   }
   return rows;
+}
+
+// タブが存在すれば readRows_、無ければ空配列を返す。
+// 後から追加したタブ（asks 等）が migrate 未実行の環境でも落ちないようにする保険
+function readRowsSafe_(name) {
+  try {
+    if (!getSpreadsheet_().getSheetByName(name)) return [];
+  } catch (e) {
+    return [];
+  }
+  return readRows_(name);
 }
 
 // オブジェクトを1行追記する（ヘッダー順に並べ替えて書く）

@@ -30,6 +30,23 @@ function actionAsk_(body) {
   });
   var answer = res.json && typeof res.json.answer === 'string' ? res.json.answer.trim() : '';
   if (!answer) return { error: 'llm_failed', message: '答えを生成できませんでした。質問を少し変えてもう一度お試しください' };
+
+  // 履歴閲覧・日記出力のために質問と回答を保存する（§5）。
+  // asksタブが未作成（migrate前）でもヒント自体は返せるよう、保存失敗は飲み込む
+  try {
+    appendRowObj_('asks', {
+      ask_id: Utilities.getUuid(),
+      timestamp: nowIso_(),
+      problem_id: problemId,
+      concept_id: prow.concept_id,
+      question: question,
+      answer: answer,
+      model_used: res.model_used
+    });
+  } catch (e) {
+    // 保存できなくても学習は止めない（次回 migrate 実行で解消する）
+  }
+
   return { answer: answer, model_used: res.model_used };
 }
 

@@ -213,6 +213,42 @@ button:disabled { opacity: 0.35; }
 .ask-a { white-space: pre-wrap; }
 .summary-sub { color: var(--muted); font-size: 0.9rem; }
 
+/* ---- 履歴画面 ---- */
+.screen-title { flex: 1; font-weight: bold; }
+#btn-history { margin-top: 18px; }
+.history-item {
+  background: var(--panel);
+  border: 1px solid #2c3040;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.history-item summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+.history-item summary::-webkit-details-marker { display: none; }
+.hist-meta { color: var(--muted); font-size: 0.8rem; margin-left: auto; white-space: nowrap; }
+.hist-body { margin-top: 10px; border-top: 1px solid #2c3040; padding-top: 10px; }
+.hist-statement { font-size: 0.9rem; color: var(--muted); }
+.hist-body pre {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.hist-q { color: var(--accent2); font-size: 0.88rem; margin-top: 8px; }
+.hist-a { white-space: pre-wrap; font-size: 0.9rem; }
+
+/* ---- 解答の途中保存（下書き） ---- */
+.draft-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.draft-status { color: var(--accent); font-size: 0.82rem; }
+
 /* ---- ヒント・結果 ---- */
 #hint-area, #result-area {
   background: var(--panel);
