@@ -13,6 +13,7 @@ const state = {
   lastRun: { stdout: '', stderr: '' },
   hintUsed: false,   // この問題で一度でもヒント・質問を使ったか
   hints: [],         // この問題で表示したヒント（途中保存・復元用）
+  hintLevel: 0,      // 段階ヒントの到達レベル（押すほど詳しく 1→2→3）
   asks: [],          // この問題で先生にした質問と回答（途中保存・復元用）
   attemptId: null,   // full採点が発番したID（saveSelfNote用）
   session: { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] } // 今日の進歩サマリ素材
@@ -32,6 +33,7 @@ function saveDraft(showStatus) {
     localStorage.setItem(draftKey(state.current.problem_id), JSON.stringify({
       code: $('editor').value,
       hints: state.hints,
+      hintLevel: state.hintLevel,
       asks: state.asks,
       hintUsed: state.hintUsed,
       savedAt: Date.now()      // どちらが新しいか比較するため（PC↔スマホ）
@@ -285,6 +287,7 @@ function openProblem(p) {
   state.ran = false;
   state.hintUsed = false;
   state.hints = [];
+  state.hintLevel = 0;
   state.asks = [];
   state.attemptId = null;
   state.lastRun = { stdout: '', stderr: '' };
@@ -321,7 +324,9 @@ function openProblem(p) {
   $('ask-status').hidden = true;
   $('hint-badge').hidden = true;
   $('hint-list').innerHTML = '';
+  $('hint-blocks').innerHTML = '';
   $('draft-status').hidden = true;
+  updateHintButtonLabel();
 
   // 途中保存（下書き）があれば、コード・ヒント・質問を復元して続きから再開する。
   // サーバ（別端末で保存）とローカルの新しい方を採用する（PC↔スマホで継げる）
@@ -329,9 +334,10 @@ function openProblem(p) {
   if (draft) {
     if (typeof draft.code === 'string' && draft.code !== '') $('editor').value = draft.code;
     if (Array.isArray(draft.hints) && draft.hints.length) {
-      state.hints = draft.hints;
-      fillHints(draft.hints);
-      $('hint-area').hidden = false;
+      state.hints = draft.hints.slice();
+      state.hintLevel = typeof draft.hintLevel === 'number' ? draft.hintLevel : draft.hints.length;
+      draft.hints.forEach((h, i) => renderHintBlock(h, '💡 ヒント ' + (i + 1)));
+      updateHintButtonLabel();
     }
     if (Array.isArray(draft.asks)) {
       draft.asks.forEach((a) => { state.asks.push(a); renderAsk(a.question, a.answer, false); });
@@ -437,10 +443,57 @@ async function grade(stage) {
   }
 }
 
-// ---- 詰まったら質問（自由文・先回りヒント） ----
-// ワンタップのヒント。固定の質問文を送る（答えのコードは出さない約束はGAS側の家庭教師プロンプトが担保）
-$('btn-hint').onclick = () =>
-  askTutor('この問題で次にやるべき一歩を、答えのコードは書かずにヒントとして1つ教えてください。');
+// ---- 段階ヒント（押すほど詳しく 1→2→3。例はこの問題に即して出す §hint.js） ----
+const HINT_LABELS = {
+  0: '💡 ヒントをもらう',
+  1: '💡 もう少し詳しいヒント',
+  2: '💡 穴埋めヒントを見る',
+  3: '💡 穴埋めヒントをもう一度'
+};
+const HINT_BLOCK_TITLES = { 1: '💡 ヒント（方針）', 2: '💡 ヒント（骨組み）', 3: '💡 ヒント（穴埋め）' };
+
+function updateHintButtonLabel() {
+  $('btn-hint').textContent = HINT_LABELS[Math.min(state.hintLevel, 3)];
+}
+
+$('btn-hint').onclick = requestHint;
+
+async function requestHint() {
+  const level = Math.min(state.hintLevel + 1, 3); // 押すほど深く。穴埋め(3)で頭打ち
+  $('btn-hint').disabled = true;
+  $('ask-status').hidden = false;
+  $('ask-status').textContent = 'ヒントを考えています…';
+  try {
+    const res = await api('hint', {
+      problem_id: state.current.problem_id,
+      code: $('editor').value,
+      level
+    });
+    state.hintLevel = level;
+    state.hints.push(res.hint);
+    renderHintBlock(res.hint, HINT_BLOCK_TITLES[level] || '💡 ヒント');
+    markHintUsed();           // ヒントを見たらこの問題はヒントありで記録（§7）
+    updateHintButtonLabel();
+    saveDraft();              // もらったヒントも下書きに残す
+  } catch (e) {
+    showError(e.message);     // 予算超過などは日本語メッセージがそのまま出る
+  } finally {
+    $('btn-hint').disabled = false;
+    $('ask-status').hidden = true;
+  }
+}
+
+// ヒントを開閉できるブロック（<details>）として積む。増えても畳めるのでスクロールが楽
+function renderHintBlock(text, title) {
+  const det = document.createElement('details');
+  det.className = 'hint-block';
+  det.open = true;
+  det.innerHTML = `<summary>${escapeHtml(title)}</summary><div class="hint-block-body">${escapeHtml(text)}</div>`;
+  $('hint-blocks').appendChild(det);
+  det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ---- 自由質問（先生に聞く） ----
 $('btn-ask').onclick = () => askTutor($('ask-input').value.trim());
 
 async function askTutor(question) {
@@ -496,11 +549,11 @@ function fillHints(hints) {
 }
 
 function renderHints(hints) {
-  state.hints = hints || [];
-  fillHints(state.hints);
+  fillHints(hints);
+  state.hints = state.hints.concat(hints || []); // 履歴・下書きに残す（段階ヒントと合算）
   $('hint-area').hidden = false;
   $('hint-area').scrollIntoView({ behavior: 'smooth' });
-  saveDraft(); // もらったヒントも下書きに残す
+  saveDraft();
 }
 
 function renderFullResult(res) {
@@ -522,7 +575,14 @@ function renderFullResult(res) {
     $('state-change').hidden = true;
   }
 
-  $('explanation').innerHTML = buildExplanationHtml(res);
+  // 正解コード・解説はトグルで開閉できるようにする（不正解時のみ畳む価値があるので details 化）
+  if (res.verdict === '正解') {
+    $('explanation').innerHTML = buildExplanationHtml(res);
+  } else {
+    $('explanation').innerHTML =
+      `<details class="reveal" open><summary>📖 解説・正解コード（タップで開閉）</summary>` +
+      `<div class="reveal-body">${buildExplanationHtml(res)}</div></details>`;
+  }
   $('result-area').hidden = false;
   $('result-area').scrollIntoView({ behavior: 'smooth' });
 
