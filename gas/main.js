@@ -35,7 +35,8 @@ function handleRequest_(e) {
 
     // 書き込み系＋予算消費系はスクリプトロックで直列化
     // （採番・FSRS更新の競合と、予算カウンタ llm_budget_used の競合を根絶）
-    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' || action === 'ask') {
+    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' ||
+        action === 'ask' || action === 'saveDraft') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
@@ -45,6 +46,7 @@ function handleRequest_(e) {
         if (action === 'grade') return actionGrade_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
         if (action === 'ask') return actionAsk_(body);
+        if (action === 'saveDraft') return actionSaveDraft_(body);
       } finally {
         lock.releaseLock();
       }
@@ -88,6 +90,8 @@ function actionGetToday_() {
       streak: calcStreak_(),
       bottleneck: recentBottleneck_()
     },
+    // 各問題の下書き（PC↔スマホ共有）。フロントは開いた問題を続きから復元する
+    drafts: draftsForProblems_(problems.map(function (p) { return p.problem_id; })),
     notice: getConf_('model_notice', '')
   };
 }

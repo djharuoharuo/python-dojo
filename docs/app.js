@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   problems: [],      // 未回答問題 [{problem_id, type, payload}]
+  serverDrafts: {},  // サーバ保存の下書き（getTodayが返す。PC↔スマホ共有）
   current: null,     // いま解いている問題
   ran: false,        // [実行]済みか（採点ボタンの活性条件 §7）
   lastRun: { stdout: '', stderr: '' },
@@ -32,12 +33,14 @@ function saveDraft(showStatus) {
       code: $('editor').value,
       hints: state.hints,
       asks: state.asks,
-      hintUsed: state.hintUsed
+      hintUsed: state.hintUsed,
+      savedAt: Date.now()      // どちらが新しいか比較するため（PC↔スマホ）
     }));
     if (showStatus) flashDraftSaved();
   } catch (e) {
     // 保存容量超過などでも学習は止めない（黙って失敗しない方針だが下書きは補助機能）
   }
+  scheduleServerSync(); // サーバにも反映（少し待ってまとめて送る）
 }
 
 function loadDraft(id) {
@@ -47,6 +50,52 @@ function loadDraft(id) {
 
 function clearDraft(id) {
   try { localStorage.removeItem(draftKey(id)); } catch (e) { /* 無くてもよい */ }
+}
+
+// 下書きをサーバ（スプレッドシート）へ同期する。別端末から続きを開けるようにする。
+// 失敗（オフライン等）してもlocalStorageには残るので学習は止まらない
+let serverSyncTimer = null;
+function scheduleServerSync() {
+  clearTimeout(serverSyncTimer);
+  serverSyncTimer = setTimeout(syncDraftToServer, 1500);
+}
+async function syncDraftToServer() {
+  if (!state.current) return;
+  try {
+    await api('saveDraft', {
+      problem_id: state.current.problem_id,
+      code: $('editor').value,
+      hints: state.hints,
+      asks: state.asks,
+      hint_used: state.hintUsed
+    });
+  } catch (e) { /* オフライン等はlocalStorageが受け持つ */ }
+}
+// 解き終えた問題の下書きをサーバからも消す（空で保存＝サーバ側で行削除）
+async function clearServerDraft(problemId) {
+  try {
+    await api('saveDraft', { problem_id: problemId, code: '', hints: [], asks: [], hint_used: false });
+  } catch (e) { /* 消せなくても次回上書きで整う */ }
+}
+
+// サーバ下書きとローカル下書きの新しい方を選ぶ（updated_at / savedAt で比較）
+function pickNewerDraft(server, local) {
+  if (server && local) {
+    const st = server.updated_at ? Date.parse(server.updated_at) : 0;
+    const lt = local.savedAt || 0;
+    return st >= lt ? normalizeServerDraft(server) : local;
+  }
+  if (server) return normalizeServerDraft(server);
+  return local;
+}
+function normalizeServerDraft(s) {
+  return {
+    code: s.code || '',
+    hints: Array.isArray(s.hints) ? s.hints : [],
+    asks: Array.isArray(s.asks) ? s.asks : [],
+    hintUsed: s.hint_used === true,
+    savedAt: s.updated_at ? Date.parse(s.updated_at) : 0
+  };
 }
 
 let draftStatusTimer = null;
@@ -94,6 +143,7 @@ async function loadHome() {
   try {
     const data = await api('getToday');
     state.problems = data.problems;
+    state.serverDrafts = data.drafts || {}; // PC↔スマホ共有の下書き
     renderHome(data);
   } catch (e) {
     showError(e.message);
@@ -197,11 +247,34 @@ function renderHistory(items) {
       `<div class="hist-body">` +
         (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
         `<div class="expl-label">自分の解答</div><pre>${escapeHtml(it.code || '(なし)')}</pre>` +
+        historyFeedbackHtml(it) +
         (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
         (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
       `</div>`;
     list.appendChild(det);
   });
+}
+
+// 履歴の1件にもらったヒント・Geminiの解説（間違えた時）を組み立てる。
+// 古い記録（保存前）はどちらも空なので、その時は何も出ない
+function historyFeedbackHtml(it) {
+  let html = '';
+  if (it.hints && it.hints.length) {
+    html += `<div class="expl-label">💡 もらったヒント</div><ul>` +
+      it.hints.map((h) => `<li>${escapeHtml(h)}</li>`).join('') + `</ul>`;
+  }
+  const ex = it.explanation;
+  if (ex) {
+    if (ex.what_differs) html += `<div class="expl-label">どこが惜しい？</div><p>${escapeHtml(ex.what_differs)}</p>`;
+    if (ex.correct_code) html += `<div class="expl-label">正解コード</div><pre>${escapeHtml(ex.correct_code)}</pre>`;
+    if (Array.isArray(ex.line_by_line) && ex.line_by_line.length) {
+      html += `<div class="expl-label">1行ずつ解説</div><ul>` +
+        ex.line_by_line.map((l) => `<li>${escapeHtml(l)}</li>`).join('') + `</ul>`;
+    }
+    if (ex.why) html += `<div class="expl-label">なぜそう書くのか</div><p>${escapeHtml(ex.why)}</p>`;
+    if (ex.one_point) html += `<div class="expl-label">次に活きる一言</div><p>💬 ${escapeHtml(ex.one_point)}</p>`;
+  }
+  return html;
 }
 
 // ---------------------------------------------------------------------
@@ -250,8 +323,9 @@ function openProblem(p) {
   $('hint-list').innerHTML = '';
   $('draft-status').hidden = true;
 
-  // 途中保存（下書き）があれば、コード・ヒント・質問を復元して続きから再開する
-  const draft = loadDraft(p.problem_id);
+  // 途中保存（下書き）があれば、コード・ヒント・質問を復元して続きから再開する。
+  // サーバ（別端末で保存）とローカルの新しい方を採用する（PC↔スマホで継げる）
+  const draft = pickNewerDraft(state.serverDrafts[p.problem_id], loadDraft(p.problem_id));
   if (draft) {
     if (typeof draft.code === 'string' && draft.code !== '') $('editor').value = draft.code;
     if (Array.isArray(draft.hints) && draft.hints.length) {
@@ -346,6 +420,7 @@ async function grade(stage) {
       stderr: state.lastRun.stderr,
       stage: stage,
       hint_used: state.hintUsed,
+      hints: state.hints,           // もらったヒントを履歴に残すため一緒に送る
       easy: $('easy-check').checked
     });
     if (res.stage === 'hint') {
@@ -492,8 +567,10 @@ $('btn-next').onclick = async () => {
       showError(e.message); // メモ保存失敗でも先には進める
     }
   }
-  // 解き終えたので下書きは破棄し、リストから外して次へ
+  // 解き終えたので下書きは破棄し（ローカル＋サーバ）、リストから外して次へ
   clearDraft(state.current.problem_id);
+  clearServerDraft(state.current.problem_id);
+  delete state.serverDrafts[state.current.problem_id];
   state.problems = state.problems.filter((p) => p.problem_id !== state.current.problem_id);
   if (state.problems.length > 0) {
     openProblem(state.problems[0]);

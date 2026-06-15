@@ -15,10 +15,13 @@ var SHEET_HEADERS = {
   ],
   attempts: [
     'attempt_id', 'timestamp', 'problem_id', 'concept_id', 'type', 'verdict',
-    'hint_used', 'error_pattern', 'self_note', 'code', 'stdout', 'stderr', 'model_used'
+    'hint_used', 'error_pattern', 'self_note', 'code', 'stdout', 'stderr', 'model_used',
+    'feedback_json'
   ],
-  // 先生にした質問とその回答（履歴閲覧・日記出力の素材。§5 ask が追記する）
+  // 先生にした質問とその回答（履歴閲覧の素材。§5 ask が追記する）
   asks: ['ask_id', 'timestamp', 'problem_id', 'concept_id', 'question', 'answer', 'model_used'],
+  // 解答の途中保存（下書き）。PC↔スマホで続きから再開するためサーバにも持つ（§8-2）
+  drafts: ['problem_id', 'updated_at', 'code', 'hints_json', 'asks_json', 'hint_used'],
   mistakes: ['pattern', 'count', 'last_seen'],
   config: ['key', 'value']
 };
