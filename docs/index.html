@@ -64,6 +64,17 @@
     <button id="btn-generate" class="btn-primary" hidden>問題を作る</button>
     <div id="home-loading" class="loading">読み込み中…</div>
     <button id="btn-history" class="btn-ghost">📖 これまでの履歴を見る</button>
+    <button id="btn-tools" class="btn-ghost">🎁 解放ツール（習得で増える道具）</button>
+  </section>
+
+  <!-- 解放ツール画面（アイデンティティ報酬 §11） -->
+  <section id="screen-tools" hidden>
+    <header class="problem-header">
+      <button id="btn-tools-back" class="btn-small">← ホーム</button>
+      <span class="screen-title">🎁 解放ツール</span>
+    </header>
+    <p class="progress">習得した概念に応じて、実際に使えるPythonツールが解放されます。コピーして自分の用途に改造しよう。</p>
+    <div id="tools-list"></div>
   </section>
 
   <!-- 履歴画面（過去問・自分の解答・した質問を見返す） -->
@@ -165,6 +176,7 @@
   <script src="config.js"></script>
   <script src="api.js"></script>
   <script src="runner.js"></script>
+  <script src="tools.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

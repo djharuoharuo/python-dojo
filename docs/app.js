@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   problems: [],      // 未回答問題 [{problem_id, type, payload}]
+  masteredConcepts: [], // 習得済み概念ID（解放ツールの判定用 §11）
   serverDrafts: {},  // サーバ保存の下書き（getTodayが返す。PC↔スマホ共有）
   current: null,     // いま解いている問題
   ran: false,        // [実行]済みか（採点ボタンの活性条件 §7）
@@ -128,7 +129,7 @@ $('notice-ok').onclick = async () => {
 };
 
 function show(screen) {
-  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history'].forEach((id) => {
+  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history', 'screen-tools'].forEach((id) => {
     $(id).hidden = (id !== screen);
   });
   window.scrollTo(0, 0);
@@ -146,6 +147,7 @@ async function loadHome() {
     const data = await api('getToday');
     state.problems = data.problems;
     state.serverDrafts = data.drafts || {}; // PC↔スマホ共有の下書き
+    state.masteredConcepts = data.mastered_concepts || []; // 解放ツール判定用
     renderHome(data);
   } catch (e) {
     showError(e.message);
@@ -277,6 +279,92 @@ function historyFeedbackHtml(it) {
     if (ex.one_point) html += `<div class="expl-label">次に活きる一言</div><p>💬 ${escapeHtml(ex.one_point)}</p>`;
   }
   return html;
+}
+
+// ---------------------------------------------------------------------
+// 解放ツール画面（アイデンティティ報酬 §11）。
+// 習得した概念に対応するツールを「解放済み（使える）」、未習得を「🔒（解放条件）」で出す。
+// ---------------------------------------------------------------------
+$('btn-tools').onclick = loadTools;
+$('btn-tools-back').onclick = loadHome;
+
+function loadTools() {
+  show('screen-tools');
+  const list = $('tools-list');
+  list.innerHTML = '';
+  const mastered = state.masteredConcepts || [];
+  const unlocked = TOOLS.filter((t) => mastered.indexOf(t.concept) !== -1);
+  const locked = TOOLS.filter((t) => mastered.indexOf(t.concept) === -1);
+
+  if (unlocked.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'progress';
+    p.textContent = 'まだ解放ツールはありません。概念を「習得」すると、ここに使える道具が増えていきます。';
+    list.appendChild(p);
+  }
+  unlocked.forEach((t) => list.appendChild(unlockedToolEl(t)));
+
+  if (locked.length > 0) {
+    const h = document.createElement('h3');
+    h.textContent = '🔒 これから解放';
+    list.appendChild(h);
+    locked.forEach((t) => list.appendChild(lockedToolEl(t)));
+  }
+}
+
+function unlockedToolEl(t) {
+  const det = document.createElement('details');
+  det.className = 'tool-item';
+  det.innerHTML =
+    `<summary><span class="tool-name">${t.icon} ${escapeHtml(t.name)}</span>` +
+    `<span class="tool-cat">${t.category === 'music' ? '音楽' : 'セキュリティ'}</span></summary>` +
+    `<div class="tool-body">` +
+      `<p>${escapeHtml(t.desc)}</p>` +
+      `<pre class="tool-code">${escapeHtml(t.script)}</pre>` +
+      `<div class="btn-row">` +
+        `<button class="btn-small tool-copy">📋 コピー</button>` +
+        `<button class="btn-small tool-run">▶ 試す</button>` +
+      `</div>` +
+      `<pre class="tool-output" hidden></pre>` +
+      `<div class="expl-label">仕組み・使い方</div><p class="tool-how">${escapeHtml(t.how)}</p>` +
+    `</div>`;
+  det.querySelector('.tool-copy').onclick = () => copyText(t.script, det.querySelector('.tool-copy'));
+  det.querySelector('.tool-run').onclick = () => runTool(t.script, det.querySelector('.tool-output'), det.querySelector('.tool-run'));
+  return det;
+}
+
+function lockedToolEl(t) {
+  const div = document.createElement('div');
+  div.className = 'tool-item locked';
+  div.innerHTML =
+    `<div class="tool-locked-name">🔒 ${t.icon} ${escapeHtml(t.name)}` +
+    `<span class="tool-cat">${t.category === 'music' ? '音楽' : 'セキュリティ'}</span></div>` +
+    `<div class="tool-unlock">「${escapeHtml(t.conceptName)}」を習得すると解放</div>`;
+  return div;
+}
+
+async function copyText(text, btn) {
+  try {
+    await navigator.clipboard.writeText(text);
+    const old = btn.textContent;
+    btn.textContent = '✓ コピーした';
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  } catch (e) {
+    showError('コピーできませんでした。コードを長押しで選択してください');
+  }
+}
+
+async function runTool(script, outEl, btn) {
+  btn.disabled = true;
+  outEl.hidden = false;
+  outEl.textContent = 'Python起動中…';
+  const result = await Runner.run(script, (msg) => { outEl.textContent = msg; });
+  btn.disabled = false;
+  if (result.error && result.stdout === undefined) {
+    outEl.textContent = result.error;
+  } else {
+    outEl.textContent = (result.stdout || '') + (result.stderr || '') || '(出力なし)';
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -568,9 +656,15 @@ function renderFullResult(res) {
 
   if (res.state_change) {
     const sc = res.state_change;
-    $('state-change').textContent = sc.to === '習得'
+    let msg = sc.to === '習得'
       ? `🎓 「${sc.concept}」を習得しました！`
       : `「${sc.concept}」: ${sc.from} → ${sc.to}`;
+    // 習得した概念に対応するツールがあれば「解放」を祝う（アイデンティティ報酬 §11）
+    if (sc.to === '習得') {
+      const tool = (typeof TOOLS !== 'undefined') && TOOLS.find((t) => t.conceptName === sc.concept);
+      if (tool) msg += `　🎁 新ツール解放：${tool.icon} ${tool.name}（ホームの「解放ツール」から使えます）`;
+    }
+    $('state-change').textContent = msg;
     $('state-change').hidden = false;
   } else {
     $('state-change').hidden = true;
