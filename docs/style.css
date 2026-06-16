@@ -344,6 +344,50 @@ button:disabled { opacity: 0.35; }
 .draft-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .draft-status { color: var(--accent); font-size: 0.82rem; }
 
+/* ---- 解放ツール ---- */
+#btn-tools { margin-top: 10px; }
+#tools-list h3 { color: var(--muted); margin: 18px 0 8px; }
+.tool-item {
+  background: var(--panel);
+  border: 1px solid #2c3040;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.tool-item summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tool-item summary::-webkit-details-marker { display: none; }
+.tool-name { flex: 1; font-weight: bold; }
+.tool-cat {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+.tool-body { margin-top: 10px; }
+.tool-code, .tool-output {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.tool-output { border-left: 3px solid var(--accent); margin-top: 8px; }
+.tool-copy, .tool-run { background: var(--panel2); color: var(--text); }
+.tool-how { font-size: 0.9rem; color: var(--muted); }
+.tool-item.locked { opacity: 0.7; }
+.tool-locked-name { display: flex; align-items: center; gap: 8px; font-weight: bold; }
+.tool-locked-name .tool-cat { margin-left: auto; }
+.tool-unlock { font-size: 0.85rem; color: var(--accent2); margin-top: 4px; }
+
 /* ---- ヒント・結果 ---- */
 #hint-area, #result-area {
   background: var(--panel);

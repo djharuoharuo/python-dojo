@@ -76,7 +76,9 @@ function actionGetToday_() {
     .filter(function (p) { return p.payload !== null; });
 
   var concepts = readRows_('concepts');
-  var mastered = concepts.filter(function (c) { return c.state === '習得'; }).length;
+  var masteredList = concepts.filter(function (c) { return c.state === '習得'; })
+    .map(function (c) { return c.concept_id; });
+  var mastered = masteredList.length;
   var today = todayStr_();
   var dueCount = concepts.filter(function (c) {
     return c.state === '習得' && c.no_review !== 'TRUE' && c.due && c.due <= today;
@@ -93,6 +95,8 @@ function actionGetToday_() {
     },
     // 各問題の下書き（PC↔スマホ共有）。フロントは開いた問題を続きから復元する
     drafts: draftsForProblems_(problems.map(function (p) { return p.problem_id; })),
+    // 習得済み概念のID一覧（フロントの「解放ツール」棚がどれを解放するか判定する §11）
+    mastered_concepts: masteredList,
     notice: getConf_('model_notice', '')
   };
 }

@@ -4,11 +4,11 @@
 // オフラインでも動かす（§8-6）。API（POST）は一切キャッシュしない。
 // =====================================================================
 
-const SHELL_CACHE = 'dojo-shell-v8';
+const SHELL_CACHE = 'dojo-shell-v9';
 const PYODIDE_CACHE = 'dojo-pyodide-v1';
 
 const SHELL_FILES = [
-  './', 'index.html', 'style.css', 'app.js', 'api.js', 'runner.js',
+  './', 'index.html', 'style.css', 'app.js', 'api.js', 'runner.js', 'tools.js',
   'worker.js', 'config.js', 'manifest.json', 'icon-192.png', 'icon-512.png'
 ];
 
