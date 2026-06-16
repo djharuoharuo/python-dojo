@@ -24,6 +24,15 @@
     <button id="error-close" class="btn-small">閉じる</button>
   </div>
 
+  <!-- タイマー終了の通知 -->
+  <div id="timer-banner" hidden>
+    <span id="timer-banner-text"></span>
+    <button id="timer-banner-ok" class="btn-small">OK</button>
+  </div>
+
+  <!-- 勉強中も見える残り時間（タイマー作動中のみ・全画面共通） -->
+  <div id="timer-float" class="timer-float" hidden>⏱ <span id="timer-float-time">00:00</span></div>
+
   <!-- ホーム画面 -->
   <section id="screen-home">
     <header class="home-header">
@@ -32,6 +41,24 @@
     </header>
     <div id="bottleneck" class="bottleneck" hidden></div>
     <div id="progress" class="progress"></div>
+
+    <!-- 勉強タイマー（スキマ時間用。分を選ぶ/入れる → 終了で音とバイブで知らせる） -->
+    <div class="timer-widget">
+      <div class="timer-head">
+        <span>⏱ 勉強タイマー</span>
+        <span id="timer-display" class="timer-display" hidden>00:00</span>
+      </div>
+      <div id="timer-presets" class="timer-presets">
+        <button class="btn-small timer-preset" data-min="5">5分</button>
+        <button class="btn-small timer-preset" data-min="10">10分</button>
+        <button class="btn-small timer-preset" data-min="15">15分</button>
+        <button class="btn-small timer-preset" data-min="25">25分</button>
+        <input id="timer-custom" type="number" min="1" max="180" inputmode="numeric" placeholder="分">
+        <button id="timer-start" class="btn-small btn-timer-start">スタート</button>
+      </div>
+      <button id="timer-stop" class="btn-small" hidden>ストップ</button>
+    </div>
+
     <h2>今日の問題</h2>
     <div id="problem-list"></div>
     <button id="btn-generate" class="btn-primary" hidden>問題を作る</button>
@@ -56,6 +83,7 @@
       <span id="problem-title"></span>
       <span id="problem-type" class="chip"></span>
     </header>
+    <div id="revenge-note" class="revenge-note" hidden>🔁 これは前回まちがえた問題のリベンジ。答えを見る前に、まず自力で挑戦！</div>
     <div class="problem-body">
       <p id="problem-statement"></p>
       <ul id="problem-conditions"></ul>

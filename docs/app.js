@@ -306,6 +306,7 @@ function openProblem(p) {
   });
   $('problem-example').textContent = pl.example_call;
   $('problem-expected').textContent = pl.expected_output;
+  $('revenge-note').hidden = !pl.is_revenge; // 🔁 前回間違いの類題なら案内を出す
 
   // デバッグ問題は buggy_code を最初からエディタに入れて「修正する」体験にする
   $('editor').value = p.type === 'デバッグ' && pl.buggy_code ? pl.buggy_code : '';
@@ -662,6 +663,91 @@ $('btn-summary-home').onclick = () => {
 };
 
 // ---------------------------------------------------------------------
+// 勉強タイマー（スキマ時間用）。終了時刻を localStorage に持つので
+// 画面遷移や再読み込みをまたいでも動き続ける。終了で音＋バイブ＋通知。
+// ---------------------------------------------------------------------
+const TIMER_KEY = 'dojo-timer-end';
+let timerInterval = null;
+let timerAudioCtx = null;
+
+function timerEnd() { return Number(localStorage.getItem(TIMER_KEY) || 0); }
+function timerRunning() { return timerEnd() > Date.now(); }
+
+function fmtTime(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function startTimer(minutes) {
+  const min = Math.max(1, Math.min(180, Math.floor(minutes)));
+  localStorage.setItem(TIMER_KEY, String(Date.now() + min * 60000));
+  // 音を鳴らす許可をユーザー操作中に取得しておく（後の自動再生制限を回避）
+  try { timerAudioCtx = timerAudioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* 音なしでも可 */ }
+  runTimerLoop();
+}
+
+function stopTimer() {
+  localStorage.removeItem(TIMER_KEY);
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  renderTimer();
+}
+
+function runTimerLoop() {
+  if (timerInterval) clearInterval(timerInterval);
+  renderTimer();
+  timerInterval = setInterval(() => {
+    if (!timerEnd()) { stopTimer(); return; }
+    if (Date.now() >= timerEnd()) { onTimerEnd(); return; }
+    renderTimer();
+  }, 1000);
+}
+
+function renderTimer() {
+  const running = timerRunning();
+  const remain = fmtTime(timerEnd() - Date.now());
+  $('timer-display').hidden = !running;
+  $('timer-presets').hidden = running;
+  $('timer-stop').hidden = !running;
+  if (running) $('timer-display').textContent = remain;
+  $('timer-float').hidden = !running;
+  if (running) $('timer-float-time').textContent = remain;
+}
+
+function onTimerEnd() {
+  localStorage.removeItem(TIMER_KEY);
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  renderTimer();
+  try { if (navigator.vibrate) navigator.vibrate([300, 150, 300]); } catch (e) { /* 非対応端末は無視 */ }
+  beepTimer();
+  $('timer-banner-text').textContent = '⏰ 設定した時間になりました。お疲れさま！キリのいい所で休憩しよう';
+  $('timer-banner').hidden = false;
+}
+
+function beepTimer() {
+  try {
+    const ctx = timerAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.08;
+    o.start();
+    setTimeout(() => { o.frequency.value = 660; }, 200);
+    setTimeout(() => { o.stop(); }, 500);
+  } catch (e) { /* 音が出せない環境でもバイブ/通知で気づける */ }
+}
+
+document.querySelectorAll('.timer-preset').forEach((b) => {
+  b.onclick = () => startTimer(Number(b.dataset.min));
+});
+$('timer-start').onclick = () => {
+  const v = Number($('timer-custom').value);
+  if (v > 0) { startTimer(v); $('timer-custom').value = ''; }
+  else showError('タイマーの分数を入力してください（例: 5）');
+};
+$('timer-stop').onclick = stopTimer;
+$('timer-banner-ok').onclick = () => { $('timer-banner').hidden = true; };
+
+// ---------------------------------------------------------------------
 // 起動
 // ---------------------------------------------------------------------
 function escapeHtml(s) {
@@ -673,4 +759,5 @@ function escapeHtml(s) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* SWなしでも動作はする */ });
 }
+if (timerRunning()) runTimerLoop(); // 再読み込み前のタイマーを引き継ぐ
 loadHome();

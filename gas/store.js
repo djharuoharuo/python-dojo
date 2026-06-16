@@ -22,6 +22,8 @@ var SHEET_HEADERS = {
   asks: ['ask_id', 'timestamp', 'problem_id', 'concept_id', 'question', 'answer', 'model_used'],
   // 解答の途中保存（下書き）。PC↔スマホで続きから再開するためサーバにも持つ（§8-2）
   drafts: ['problem_id', 'updated_at', 'code', 'hints_json', 'asks_json', 'hint_used'],
+  // リベンジ再テスト：間違えた問題を数日後に類題で再出題するための待ち行列（§6 テスト効果）
+  revenge: ['problem_id', 'concept_id', 'due', 'status'],
   mistakes: ['pattern', 'count', 'last_seen'],
   config: ['key', 'value']
 };
