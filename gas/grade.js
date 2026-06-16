@@ -117,6 +117,12 @@ function finalizeAttempt_(prow, payload, r) {
 
   if (r.errorPattern && r.errorPattern !== 'なし') bumpMistake_(r.errorPattern);
 
+  // 間違えた問題は数日後に類題で再出題するキューへ（テスト効果 §6）。
+  // revengeタブ未作成（migrate前）でも採点は止めない
+  if (r.verdict !== '正解') {
+    try { enqueueRevenge_(prow.problem_id, prow.concept_id); } catch (e) { /* 後でmigrateすれば有効に */ }
+  }
+
   return {
     stage: 'full',
     attempt_id: attemptId,

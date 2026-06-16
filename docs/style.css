@@ -55,6 +55,69 @@ pre, textarea, code {
 #error-banner { background: #3a2020; border: 1px solid var(--danger); }
 #notice-text, #error-text { flex: 1; }
 
+#timer-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  background: #203a2c;
+  border: 1px solid var(--accent);
+}
+#timer-banner-text { flex: 1; }
+
+/* ---- 勉強タイマー ---- */
+.timer-widget {
+  background: var(--panel);
+  border: 1px solid #2c3040;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.timer-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; color: var(--muted); }
+.timer-display { color: var(--accent); font-weight: bold; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.timer-presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.timer-preset { background: var(--panel2); color: var(--text); }
+#timer-custom {
+  width: 64px;
+  padding: 6px 8px;
+  background: var(--panel2);
+  border: 1px solid #2c3040;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 16px; /* スマホのズーム防止 */
+}
+.btn-timer-start { background: var(--accent); color: #10241a; font-weight: bold; }
+#timer-stop { margin-top: 8px; background: var(--panel2); color: var(--text); }
+
+/* 全画面に出る残り時間（タイマー作動中のみ） */
+.timer-float {
+  position: fixed;
+  top: calc(6px + env(safe-area-inset-top));
+  right: 10px;
+  z-index: 50;
+  background: rgba(16, 36, 26, 0.92);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+
+/* リベンジ（前回間違いの類題）の案内 */
+.revenge-note {
+  background: #2a2333;
+  border-left: 4px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
 /* ---- ホーム ---- */
 .home-header { display: flex; justify-content: space-between; align-items: center; }
 .streak { font-size: 1rem; color: var(--accent2); font-weight: bold; }
