@@ -32,6 +32,8 @@ const draftKey = (id) => DRAFT_PREFIX + id;
 
 function saveDraft(showStatus) {
   if (!state.current) return;
+  // 再挑戦（練習モード）は下書きを残さない＝次に開いた時もまっさらにするため
+  if (state.practice) return;
   try {
     localStorage.setItem(draftKey(state.current.problem_id), JSON.stringify({
       code: $('editor').value,
@@ -441,11 +443,15 @@ function openProblem(p, opts) {
   $('hint-badge').hidden = true;
   $('hint-blocks').innerHTML = '';
   $('draft-status').hidden = true;
+  // 練習モードは下書きを使わない（毎回まっさら）ので、下書き保存UIは隠す
+  $('draft-row').hidden = state.practice;
   updateHintButtonLabel();
 
   // 途中保存（下書き）があれば、コード・ヒント・質問を復元して続きから再開する。
-  // サーバ（別端末で保存）とローカルの新しい方を採用する（PC↔スマホで継げる）
-  const draft = pickNewerDraft(state.serverDrafts[p.problem_id], loadDraft(p.problem_id));
+  // サーバ（別端末で保存）とローカルの新しい方を採用する（PC↔スマホで継げる）。
+  // ただし再挑戦（練習モード）は毎回まっさらにする＝自分の力を試し直すのが目的なので、
+  // 前回の解答・もらったヒント・質問は一切復元しない（下書きも保存しない）
+  const draft = state.practice ? null : pickNewerDraft(state.serverDrafts[p.problem_id], loadDraft(p.problem_id));
   if (draft) {
     if (typeof draft.code === 'string' && draft.code !== '') $('editor').value = draft.code;
     if (Array.isArray(draft.hints) && draft.hints.length) {
