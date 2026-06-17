@@ -264,8 +264,8 @@ function renderHistory(items) {
 function historyFeedbackHtml(it) {
   let html = '';
   if (it.hints && it.hints.length) {
-    html += `<div class="expl-label">💡 もらったヒント</div><ul>` +
-      it.hints.map((h) => `<li>${escapeHtml(h)}</li>`).join('') + `</ul>`;
+    html += `<div class="expl-label">💡 もらったヒント</div>` +
+      it.hints.map((h) => `<div class="hint-block-body">${hintToHtml(h)}</div>`).join('');
   }
   const ex = it.explanation;
   if (ex) {
@@ -559,8 +559,9 @@ async function requestHint() {
       level
     });
     state.hintLevel = level;
-    state.hints.push(res.hint);
-    renderHintBlock(res.hint, HINT_BLOCK_TITLES[level] || '💡 ヒント');
+    const h = { hint: res.hint, code: res.code || null, steps: res.steps || null };
+    state.hints.push(h);
+    renderHintBlock(h, HINT_BLOCK_TITLES[level] || '💡 ヒント');
     markHintUsed();           // ヒントを見たらこの問題はヒントありで記録（§7）
     updateHintButtonLabel();
     saveDraft();              // もらったヒントも下書きに残す
@@ -573,13 +574,31 @@ async function requestHint() {
 }
 
 // ヒントを開閉できるブロック（<details>）として積む。増えても畳めるのでスクロールが楽
-function renderHintBlock(text, title) {
+function renderHintBlock(h, title) {
   const det = document.createElement('details');
   det.className = 'hint-block';
   det.open = true;
-  det.innerHTML = `<summary>${escapeHtml(title)}</summary><div class="hint-block-body">${escapeHtml(text)}</div>`;
+  det.innerHTML = `<summary>${escapeHtml(title)}</summary><div class="hint-block-body">${hintToHtml(h)}</div>`;
   $('hint-blocks').appendChild(det);
   det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ヒント1件をHTML化（worked example形式）。
+// 方針(散文) → コード(monospace・①②③付き) → 番号つき解説、の順で読みやすく分ける。
+// 文字列（旧形式・grade段階のヒント）もそのまま表示できる
+const HINT_MARKS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
+function hintToHtml(h) {
+  if (typeof h === 'string') return `<div class="hint-text">${escapeHtml(h)}</div>`;
+  if (!h || typeof h !== 'object') return '';
+  let html = '';
+  if (h.hint) html += `<div class="hint-text">${escapeHtml(h.hint)}</div>`;
+  if (h.code) html += `<pre class="hint-code">${escapeHtml(h.code)}</pre>`;
+  if (Array.isArray(h.steps) && h.steps.length) {
+    html += '<div class="hint-steps">' + h.steps.map((s, i) =>
+      `<div class="hint-step"><span class="hint-mark">${HINT_MARKS[i] || (i + 1) + '.'}</span>` +
+      `<span>${escapeHtml(s)}</span></div>`).join('') + '</div>';
+  }
+  return html;
 }
 
 // ---- 自由質問（先生に聞く） ----
@@ -811,23 +830,26 @@ function onTimerEnd() {
   localStorage.removeItem(TIMER_KEY);
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   renderTimer();
-  try { if (navigator.vibrate) navigator.vibrate([300, 150, 300]); } catch (e) { /* 非対応端末は無視 */ }
+  try { if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]); } catch (e) { /* 非対応端末は無視 */ }
   beepTimer();
-  $('timer-banner-text').textContent = '⏰ 設定した時間になりました。お疲れさま！キリのいい所で休憩しよう';
-  $('timer-banner').hidden = false;
+  $('timer-overlay').hidden = false; // 全画面で知らせる（どこを見ていても気づく）
 }
 
+// 気づきやすいよう短い音を3回鳴らす
 function beepTimer() {
   try {
     const ctx = timerAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.08;
-    o.start();
-    setTimeout(() => { o.frequency.value = 660; }, 200);
-    setTimeout(() => { o.stop(); }, 500);
-  } catch (e) { /* 音が出せない環境でもバイブ/通知で気づける */ }
+    [0, 350, 700].forEach((delay) => {
+      setTimeout(() => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.type = 'sine'; o.frequency.value = 880; g.gain.value = 0.09;
+        o.start();
+        setTimeout(() => o.stop(), 220);
+      }, delay);
+    });
+  } catch (e) { /* 音が出せない環境でもバイブ/全画面通知で気づける */ }
 }
 
 document.querySelectorAll('.timer-preset').forEach((b) => {
@@ -839,7 +861,7 @@ $('timer-start').onclick = () => {
   else showError('タイマーの分数を入力してください（例: 5）');
 };
 $('timer-stop').onclick = stopTimer;
-$('timer-banner-ok').onclick = () => { $('timer-banner').hidden = true; };
+$('timer-overlay-ok').onclick = () => { $('timer-overlay').hidden = true; };
 
 // ---------------------------------------------------------------------
 // 起動
