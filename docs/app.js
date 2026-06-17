@@ -15,6 +15,7 @@ const state = {
   hintUsed: false,   // この問題で一度でもヒント・質問を使ったか
   hints: [],         // この問題で表示したヒント（途中保存・復元用）
   hintLevel: 0,      // 段階ヒントの到達レベル（押すほど詳しく 1→2→3）
+  gradedCode: '',    // 採点したコード（結果画面で正解と見比べる）
   asks: [],          // この問題で先生にした質問と回答（途中保存・復元用）
   attemptId: null,   // full採点が発番したID（saveSelfNote用）
   session: { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] } // 今日の進歩サマリ素材
@@ -504,6 +505,7 @@ $('btn-retry').onclick = () => {                 // 修正して再実行
 
 async function grade(stage) {
   if (!state.ran) { showError('先に[▶ 実行]してから採点してください'); return; }
+  state.gradedCode = $('editor').value; // 採点したコードを保持（結果で正解と見比べる）
   $('btn-grade').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '採点中…';
@@ -630,14 +632,15 @@ async function askTutor(question) {
   }
 }
 
-// 質問と回答を1件描画する（復元時は scroll=false で静かに並べ直す）
+// 質問と回答を1件描画する（開閉できる。復元時は scroll=false で静かに並べ直す）
 function renderAsk(question, answer, scroll) {
-  const wrap = document.createElement('div');
-  wrap.className = 'ask-answer';
-  wrap.innerHTML = `<div class="ask-q">❓ ${escapeHtml(question)}</div>` +
+  const det = document.createElement('details');
+  det.className = 'ask-answer';
+  det.open = true;
+  det.innerHTML = `<summary class="ask-q">❓ ${escapeHtml(question)}</summary>` +
     `<div class="ask-a">${escapeHtml(answer)}</div>`;
-  $('ask-answers').appendChild(wrap);
-  if (scroll) wrap.scrollIntoView({ behavior: 'smooth' });
+  $('ask-answers').appendChild(det);
+  if (scroll) det.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ヒント・質問・答えを見る のいずれかを使ったら印を付ける（記録と見た目を一致させる）
@@ -646,20 +649,13 @@ function markHintUsed() {
   $('hint-badge').hidden = false;
 }
 
-function fillHints(hints) {
-  const ul = $('hint-list');
-  ul.innerHTML = '';
-  (hints || []).forEach((h) => {
-    const li = document.createElement('li');
-    li.textContent = h;
-    ul.appendChild(li);
-  });
-}
-
+// 採点段階のヒント（誘導質問）も、段階ヒントと同じ開閉ブロックで積む＝保存もされる
 function renderHints(hints) {
-  fillHints(hints);
-  state.hints = state.hints.concat(hints || []); // 履歴・下書きに残す（段階ヒントと合算）
-  $('hint-area').hidden = false;
+  (hints || []).forEach((h) => {
+    state.hints.push(h);
+    renderHintBlock(h, '💡 ヒント（採点）');
+  });
+  $('hint-area').hidden = false; // [修正して再実行][答えを見る] の操作ボタン
   $('hint-area').scrollIntoView({ behavior: 'smooth' });
   saveDraft();
 }
@@ -712,23 +708,48 @@ function renderFullResult(res) {
 
 function buildExplanationHtml(res) {
   if (res.verdict === '正解') {
-    // 正解時はLLMを呼ばない定型表示（§7）
-    return `<p>期待される出力と完全に一致しました。</p>` +
-      `<div class="expl-label">期待される出力</div><pre>${escapeHtml(res.expected_output)}</pre>`;
+    // 正解は「正解！」で十分。改善提案が来た時だけ一言添える
+    if (res.suggestion) return `<div class="expl-label">💡 もっと良くするなら</div><p>${escapeHtml(res.suggestion)}</p>`;
+    return '';
   }
   if (!res.explanation) {
-    return `<p>解説の取得に失敗しましたが、正誤判定は確定しています（出力の比較で判定）。` +
-      `期待される出力と自分の出力を見比べてみてください。</p>` +
+    return `<p>判定は確定しています（出力の比較）。期待される出力と自分の出力を見比べてみてください。</p>` +
       `<div class="expl-label">期待される出力</div><pre>${escapeHtml(res.expected_output)}</pre>`;
   }
   const ex = res.explanation;
-  const lines = (ex.line_by_line || []).map((l) => `<li>${escapeHtml(l)}</li>`).join('');
-  return `
-    <div class="expl-label">どこが惜しい？</div><p>${escapeHtml(ex.what_differs)}</p>
-    <div class="expl-label">正解コード</div><pre>${escapeHtml(ex.correct_code)}</pre>
-    <div class="expl-label">1行ずつ解説</div><ul>${lines}</ul>
-    <div class="expl-label">なぜそう書くのか</div><p>${escapeHtml(ex.why)}</p>
-    <div class="expl-label">次に活きる一言</div><p>💬 ${escapeHtml(ex.one_point)}</p>`;
+  // 自分のコードと正解コードを並べて見比べる（違う行をハイライト）
+  let html = codeCompareHtml(state.gradedCode, ex.correct_code);
+  if (ex.what_differs) html += `<div class="expl-label">どこが違う？</div><p>${escapeHtml(ex.what_differs)}</p>`;
+  if (ex.one_point) html += `<p class="one-point">💬 ${escapeHtml(ex.one_point)}</p>`;
+  // 長くなりがちな詳細は折りたたみ（必要な人だけ開く）
+  const lines = (ex.line_by_line || []).filter(Boolean).map((l) => `<li>${escapeHtml(l)}</li>`).join('');
+  if (lines || ex.why) {
+    html += `<details class="more-expl"><summary>もっと詳しく</summary>`;
+    if (lines) html += `<div class="expl-label">気をつける行</div><ul>${lines}</ul>`;
+    if (ex.why) html += `<div class="expl-label">なぜそう書くのか</div><p>${escapeHtml(ex.why)}</p>`;
+    html += `</details>`;
+  }
+  return html;
+}
+
+// 自分のコードと正解コードを縦に並べ、行ごとに違う所をハイライトする
+function codeCompareHtml(userCode, correctCode) {
+  const u = String(userCode || '').split('\n');
+  const c = String(correctCode || '').split('\n');
+  const n = Math.max(u.length, c.length);
+  const line = (s, diff) => `<div class="${diff ? 'cmp-diff' : ''}">${escapeHtml(s) || '&nbsp;'}</div>`;
+  let ul = '', cl = '';
+  for (let i = 0; i < n; i++) {
+    const a = i < u.length ? u[i] : '';
+    const b = i < c.length ? c[i] : '';
+    const diff = a !== b;
+    ul += line(a, diff);
+    cl += line(b, diff);
+  }
+  return `<div class="code-compare">` +
+    `<div class="cmp-col"><div class="expl-label">あなたのコード</div><pre class="cmp cmp-you">${ul}</pre></div>` +
+    `<div class="cmp-col"><div class="expl-label">正解コード</div><pre class="cmp cmp-ans">${cl}</pre></div>` +
+    `</div>`;
 }
 
 // ---- 保存して次へ（原因1行メモ §7-5） ----
