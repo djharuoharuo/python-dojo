@@ -32,11 +32,12 @@ function actionGrade_(body) {
     normalizedEquals_(stdout, payload.expected_output);
 
   if (isCorrect) {
-    // 正解時はLLMを呼ばない（API節約）。stageに関わらずここで確定・記録する
+    // 正解は「正解！」で十分。ただし「こう書くともっと良い」一言があれば添える（本人の希望）
+    var suggestion = correctSuggestion_(payload, code);
     return finalizeAttempt_(prow, payload, {
       code: code, stdout: stdout, stderr: stderr,
       verdict: '正解', hintUsed: hintUsed, easy: easy,
-      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints, suggestion: suggestion
     });
   }
 
@@ -130,9 +131,32 @@ function finalizeAttempt_(prow, payload, r) {
     expected_output: payload.expected_output,
     explanation: r.explanation, // 正解時とLLM障害時は null（フロントは定型表示）
     explanation_failed: r.verdict !== '正解' && r.explanation === null,
+    suggestion: r.suggestion || '', // 正解時の「もっと良くする一言」（無ければ空）
     state_change: change, // 昇級・降格があれば {concept, from, to}
     model_used: r.modelUsed
   };
+}
+
+// 正解コードに対する「もっと良く書く一言」を1つだけ返す（無ければ空文字）。
+// 予算超過・LLM障害でも正解の確定は止めないよう、失敗は飲み込む
+function correctSuggestion_(payload, code) {
+  try {
+    var res = callGemini_({
+      system: [
+        'あなたはPython完全初心者の家庭教師。正解できたコードを、より良く書く提案が1つだけあれば短く返す。JSONのみ。',
+        '- 提案が無ければ suggestion は空文字にする（無理にひねり出さない）。',
+        '- 1文だけ。専門用語には短い説明。説教やお世辞はしない。',
+        '- 例:「if x == True より if x: の方が簡潔です（==Trueは省ける）」'
+      ].join('\n'),
+      user: '# 問題\n' + payload.statement + '\n# 正解できたコード\n' + code +
+        '\n\nこのコードを、より良く/簡潔にする一言の提案が1つあれば。無ければ空文字。',
+      schema: { type: 'OBJECT', properties: { suggestion: { type: 'STRING' } }, required: ['suggestion'] },
+      temperature: 0.2
+    });
+    return res.json && typeof res.json.suggestion === 'string' ? res.json.suggestion.trim() : '';
+  } catch (e) {
+    return ''; // 予算超過などでも「正解！」は返す
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -237,7 +261,10 @@ function askHints_(payload, code, stdout, stderr) {
 function gradeSystemPrompt_() {
   return [
     'あなたはPython完全初心者の家庭教師。正誤判定は既にコードが済ませており、あなたの役割はヒントと解説だけ。JSONのみを出力する。',
-    '- すべて日本語。専門用語には毎回短い説明を添える',
+    '- すべて日本語。専門用語には毎回その場で短い説明を添える',
+    '【簡潔さ最優先】ダラダラ説明しない：',
+    '- what_differs は1〜2文。why は1文。one_point は1文。',
+    '- line_by_line は「間違いに直接関係する行だけ」を最大3つ。正しい行を一つずつ褒め称えない。',
     '- 本人を励ます調子で、ただし誤りは具体的に指摘する'
   ].join('\n');
 }

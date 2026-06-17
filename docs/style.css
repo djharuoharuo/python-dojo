@@ -289,9 +289,35 @@ button:disabled { opacity: 0.35; }
   margin-top: 8px;
   font-size: 0.92rem;
 }
-.ask-q { color: var(--muted); font-size: 0.82rem; margin-bottom: 4px; }
-.ask-a { white-space: pre-wrap; }
+.ask-answer summary { cursor: pointer; list-style: none; }
+.ask-answer summary::-webkit-details-marker { display: none; }
+.ask-q { color: var(--muted); font-size: 0.82rem; }
+.ask-q::before { content: '▸ '; }
+.ask-answer[open] .ask-q::before { content: '▾ '; }
+.ask-a { white-space: pre-wrap; margin-top: 6px; }
 .summary-sub { color: var(--muted); font-size: 0.9rem; }
+
+/* 採点結果：自分のコードと正解コードの見比べ */
+.code-compare { display: flex; flex-direction: column; gap: 10px; margin: 8px 0; }
+.cmp {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.cmp > div { min-height: 1.6em; }
+.cmp-you { border-left: 3px solid var(--danger); }
+.cmp-ans { border-left: 3px solid var(--accent); }
+.cmp-you .cmp-diff { background: rgba(224, 93, 93, 0.20); }
+.cmp-ans .cmp-diff { background: rgba(79, 192, 141, 0.20); }
+.one-point { color: var(--accent2); margin-top: 8px; }
+.more-expl summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; margin-top: 8px; list-style: none; }
+.more-expl summary::-webkit-details-marker { display: none; }
+.more-expl summary::before { content: '▸ '; }
+.more-expl[open] summary::before { content: '▾ '; }
 
 /* ---- 段階ヒント（押すほど詳しく・開閉できる） ---- */
 .hint-note { color: var(--muted); font-size: 0.78rem; margin: 4px 2px 0; }
