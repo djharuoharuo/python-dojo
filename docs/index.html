@@ -24,14 +24,18 @@
     <button id="error-close" class="btn-small">閉じる</button>
   </div>
 
-  <!-- タイマー終了の通知 -->
-  <div id="timer-banner" hidden>
-    <span id="timer-banner-text"></span>
-    <button id="timer-banner-ok" class="btn-small">OK</button>
-  </div>
-
   <!-- 勉強中も見える残り時間（タイマー作動中のみ・全画面共通） -->
   <div id="timer-float" class="timer-float" hidden>⏱ <span id="timer-float-time">00:00</span></div>
+
+  <!-- タイマー終了：全画面通知（スクロール位置に関係なく必ず気づく） -->
+  <div id="timer-overlay" class="timer-overlay" hidden>
+    <div class="timer-overlay-card">
+      <div class="timer-overlay-icon">⏰</div>
+      <div class="timer-overlay-title">時間です！</div>
+      <div class="timer-overlay-sub">お疲れさま。キリのいい所で休憩しよう 🎵</div>
+      <button id="timer-overlay-ok" class="btn-primary">OK</button>
+    </div>
+  </div>
 
   <!-- ホーム画面 -->
   <section id="screen-home">
