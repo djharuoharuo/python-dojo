@@ -16,7 +16,11 @@ var SHEET_HEADERS = {
   attempts: [
     'attempt_id', 'timestamp', 'problem_id', 'concept_id', 'type', 'verdict',
     'hint_used', 'error_pattern', 'self_note', 'code', 'stdout', 'stderr', 'model_used',
-    'feedback_json'
+    'feedback_json',
+    // 本番 / 練習。過去問の「再挑戦」は '練習' として記録だけ残し、FSRS・昇級/降格・
+    // 難易度クランプ・ミス集計・リベンジには一切混ぜない（空欄は本番扱い・後方互換）。
+    // ※ 必ず末尾に追加すること（既存行の列位置がずれないように）
+    'mode'
   ],
   // 先生にした質問とその回答（履歴閲覧の素材。§5 ask が追記する）
   asks: ['ask_id', 'timestamp', 'problem_id', 'concept_id', 'question', 'answer', 'model_used'],
