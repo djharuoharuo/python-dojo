@@ -105,7 +105,9 @@ function actionGetToday_() {
 // 苦手を克服すると表示も切り替わる（通算ではなく“いまの弱点”を指すため）。
 // 直近にミスが無ければ通算トップのmistakeにフォールバック（情報を空にしない）
 function recentBottleneck_() {
-  var recent = readRows_('attempts').slice(-20);
+  // 練習（再挑戦）は「いまの弱点」判定に混ぜない（自分で選んだ問題なので偏る）
+  var recent = readRows_('attempts')
+    .filter(function (a) { return a.mode !== '練習'; }).slice(-20);
   var counts = {};
   recent.forEach(function (a) {
     var p = a.error_pattern;

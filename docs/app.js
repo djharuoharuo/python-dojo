@@ -10,6 +10,7 @@ const state = {
   masteredConcepts: [], // 習得済み概念ID（解放ツールの判定用 §11）
   serverDrafts: {},  // サーバ保存の下書き（getTodayが返す。PC↔スマホ共有）
   current: null,     // いま解いている問題
+  practice: false,   // 過去問の再挑戦（練習モード）か。記録は残すが学習計画には反映しない
   ran: false,        // [実行]済みか（採点ボタンの活性条件 §7）
   lastRun: { stdout: '', stderr: '' },
   hintUsed: false,   // この問題で一度でもヒント・質問を使ったか
@@ -241,23 +242,46 @@ function renderHistory(items) {
     det.className = 'history-item';
     const mark = it.verdict === '正解' ? '✅' : (it.verdict === '惜しい' ? '🟡' : '❌');
     const hint = it.hint_used ? ' 💡' : '';
+    const practice = it.practice ? ' 🔁練習' : '';
     const date = String(it.timestamp || '').slice(5, 10).replace('-', '/');
     const num = it.number ? `問${it.number} ` : '';
     const asks = (it.asks || []).map((a) =>
       `<div class="hist-q">❓ ${escapeHtml(a.question)}</div>` +
       `<div class="hist-a">${escapeHtml(a.answer)}</div>`).join('');
+    // この問題の通算成績（再挑戦も含む）。2回以上挑戦している時だけ「正解率」も添える
+    const rate = it.tries ? Math.round((it.corrects / it.tries) * 100) : 0;
+    const stat = it.tries
+      ? `<div class="hist-stat">この問題の通算: ${it.corrects}/${it.tries} 正解` +
+        (it.tries >= 2 ? `（正解率 ${rate}%）` : '') + `</div>`
+      : '';
+    const canRetry = it.problem_id && it.payload;
     det.innerHTML =
       `<summary>${mark} <b>${num}${escapeHtml(it.title)}</b>` +
-      `<span class="hist-meta">${date} ・ ${escapeHtml(it.type)}${hint}</span></summary>` +
+      `<span class="hist-meta">${date} ・ ${escapeHtml(it.type)}${hint}${practice}</span></summary>` +
       `<div class="hist-body">` +
+        stat +
+        (canRetry ? `<button class="btn-small hist-retry">🔁 この問題にもう一度挑戦</button>` : '') +
         (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
         `<div class="expl-label">自分の解答</div><pre>${escapeHtml(it.code || '(なし)')}</pre>` +
         historyFeedbackHtml(it) +
         (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
         (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
       `</div>`;
+    if (canRetry) {
+      det.querySelector('.hist-retry').onclick = () => rechallenge(it);
+    }
     list.appendChild(det);
   });
+}
+
+// 過去問の「再挑戦」: 履歴の1件から同じ問題をそのまま開き直す（練習モード）。
+// 記録は履歴とストリークに残るが、FSRS・昇級・難易度には反映されない（grade.js 参照）
+function rechallenge(it) {
+  if (!it.problem_id || !it.payload) {
+    showError('この問題は古い記録のため再挑戦できません');
+    return;
+  }
+  openProblem({ problem_id: it.problem_id, type: it.type, payload: it.payload }, { practice: true });
 }
 
 // 履歴の1件にもらったヒント・Geminiの解説（間違えた時）を組み立てる。
@@ -371,8 +395,9 @@ async function runTool(script, outEl, btn) {
 // ---------------------------------------------------------------------
 // 問題画面
 // ---------------------------------------------------------------------
-function openProblem(p) {
+function openProblem(p, opts) {
   state.current = p;
+  state.practice = !!(opts && opts.practice); // 履歴からの「再挑戦」は練習モード
   state.ran = false;
   state.hintUsed = false;
   state.hints = [];
@@ -396,6 +421,7 @@ function openProblem(p) {
   $('problem-example').textContent = pl.example_call;
   $('problem-expected').textContent = pl.expected_output;
   $('revenge-note').hidden = !pl.is_revenge; // 🔁 前回間違いの類題なら案内を出す
+  $('practice-note').hidden = !state.practice; // 🔁 履歴からの再挑戦なら練習の案内を出す
 
   // デバッグ問題は buggy_code を最初からエディタに入れて「修正する」体験にする
   $('editor').value = p.type === 'デバッグ' && pl.buggy_code ? pl.buggy_code : '';
@@ -413,7 +439,6 @@ function openProblem(p) {
   $('ask-answers').innerHTML = '';
   $('ask-status').hidden = true;
   $('hint-badge').hidden = true;
-  $('hint-list').innerHTML = '';
   $('hint-blocks').innerHTML = '';
   $('draft-status').hidden = true;
   updateHintButtonLabel();
@@ -518,7 +543,8 @@ async function grade(stage) {
       stage: stage,
       hint_used: state.hintUsed,
       hints: state.hints,           // もらったヒントを履歴に残すため一緒に送る
-      easy: $('easy-check').checked
+      easy: $('easy-check').checked,
+      mode: state.practice ? 'practice' : 'normal' // 再挑戦は練習として記録（学習計画に混ぜない）
     });
     if (res.stage === 'hint') {
       markHintUsed(); // 一度でもヒントを見たら最終 hint_used=true（§7）
@@ -696,14 +722,16 @@ function renderFullResult(res) {
   $('result-area').hidden = false;
   $('result-area').scrollIntoView({ behavior: 'smooth' });
 
-  // 今日の進歩サマリ用に記録
-  state.session.total++;
-  if (res.verdict === '正解') {
-    state.session.correct++;
-    if (state.hintUsed) state.session.hintCorrect++; // ヒントありの正解を別カウント
+  // 今日の進歩サマリ用に記録（練習＝再挑戦は今日の問題と無関係なので集計に入れない）
+  if (!state.practice) {
+    state.session.total++;
+    if (res.verdict === '正解') {
+      state.session.correct++;
+      if (state.hintUsed) state.session.hintCorrect++; // ヒントありの正解を別カウント
+    }
+    if (res.verdict === '惜しい') state.session.close++;
+    if (res.state_change) state.session.changes.push(res.state_change);
   }
-  if (res.verdict === '惜しい') state.session.close++;
-  if (res.state_change) state.session.changes.push(res.state_change);
 }
 
 function buildExplanationHtml(res) {
@@ -762,9 +790,15 @@ $('btn-next').onclick = async () => {
       showError(e.message); // メモ保存失敗でも先には進める
     }
   }
-  // 解き終えたので下書きは破棄し（ローカル＋サーバ）、リストから外して次へ
+  // 解き終えたので下書きは破棄する（ローカル＋サーバ）
   clearDraft(state.current.problem_id);
   clearServerDraft(state.current.problem_id);
+  // 再挑戦（練習）は今日のリストと無関係。履歴に戻って最新の挑戦記録を反映する
+  if (state.practice) {
+    loadHistory();
+    return;
+  }
+  // 今日の問題はリストから外して次へ
   delete state.serverDrafts[state.current.problem_id];
   state.problems = state.problems.filter((p) => p.problem_id !== state.current.problem_id);
   if (state.problems.length > 0) {

@@ -98,7 +98,9 @@ function actionGenerate_(body) {
 // 標本が5問未満のうちは判断せず 'ok' 扱い
 // ---------------------------------------------------------------------
 function recentAccuracy_(low, high) {
-  var attempts = readRows_('attempts').slice(-20);
+  // 練習（過去問の再挑戦）は難易度判断に混ぜない（自分で選んだ・詰め込みでデータが偏るため）
+  var attempts = readRows_('attempts')
+    .filter(function (a) { return a.mode !== '練習'; }).slice(-20);
   if (attempts.length < 5) return 'ok';
   var score = 0;
   attempts.forEach(function (a) {

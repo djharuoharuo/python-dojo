@@ -13,6 +13,8 @@ function actionGrade_(body) {
   var stage = body.stage === 'full' ? 'full' : 'hint';
   var hintUsed = body.hint_used === true;
   var easy = body.easy === true; // UIの「余裕だった」タップ
+  // 過去問の「再挑戦」（練習モード）。記録は残すが学習計画には混ぜない（後述 finalizeAttempt_）
+  var practice = body.mode === 'practice';
   // この問題で表示したヒント（履歴に残すためフロントから受け取る）
   var hints = Array.isArray(body.hints)
     ? body.hints.filter(function (h) { return typeof h === 'string' && h; }).slice(0, 5)
@@ -37,7 +39,8 @@ function actionGrade_(body) {
     return finalizeAttempt_(prow, payload, {
       code: code, stdout: stdout, stderr: stderr,
       verdict: '正解', hintUsed: hintUsed, easy: easy,
-      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints, suggestion: suggestion
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints,
+      suggestion: suggestion, practice: practice
     });
   }
 
@@ -69,7 +72,7 @@ function actionGrade_(body) {
     code: code, stdout: stdout, stderr: stderr,
     verdict: verdict, hintUsed: hintUsed, easy: false,
     errorPattern: explanation ? explanation.error_pattern : 'その他',
-    explanation: explanation, modelUsed: modelUsed, hints: hints
+    explanation: explanation, modelUsed: modelUsed, hints: hints, practice: practice
   });
 }
 
@@ -103,8 +106,28 @@ function finalizeAttempt_(prow, payload, r) {
     stderr: r.stderr,
     model_used: r.modelUsed,
     // もらったヒントとフル解説を履歴用に保存（後から振り返れるように §5）
-    feedback_json: JSON.stringify({ hints: r.hints || [], explanation: r.explanation || null })
+    feedback_json: JSON.stringify({ hints: r.hints || [], explanation: r.explanation || null }),
+    mode: r.practice ? '練習' : '本番'
   });
+
+  // 過去問の「再挑戦」（練習モード）は、履歴とストリークにだけ残す。
+  // FSRS・昇級/降格・難易度クランプ・ミス集計・リベンジには一切影響させない
+  // （詰め込み正解で復習スケジュールを乱したり、遊びの誤答で降格させないため）。
+  if (r.practice) {
+    return {
+      stage: 'full',
+      attempt_id: attemptId,
+      verdict: r.verdict,
+      expected_output: payload.expected_output,
+      explanation: r.explanation,
+      explanation_failed: r.verdict !== '正解' && r.explanation === null,
+      suggestion: r.suggestion || '',
+      state_change: null, // 練習では昇級も降格もしない
+      practice: true,
+      model_used: r.modelUsed
+    };
+  }
+
   updateRowWhere_('problems', 'problem_id', prow.problem_id, { status: '採点済' });
 
   // FSRS rating（§7-2）: 不正解→Again / 惜しい→Hard / ヒントあり正解→Hard / ノーヒント正解→Good（余裕→Easy）
@@ -133,6 +156,7 @@ function finalizeAttempt_(prow, payload, r) {
     explanation_failed: r.verdict !== '正解' && r.explanation === null,
     suggestion: r.suggestion || '', // 正解時の「もっと良くする一言」（無ければ空）
     state_change: change, // 昇級・降格があれば {concept, from, to}
+    practice: false,
     model_used: r.modelUsed
   };
 }
