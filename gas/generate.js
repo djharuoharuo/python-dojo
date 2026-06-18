@@ -27,7 +27,7 @@ function actionGenerate_(body) {
   var threshold = Number(conf.nohint_threshold || 3);
   var startNumber = Number(conf.last_problem_number || 30);
   var topPatterns = topMistakes_().map(function (m) { return m.pattern; });
-  var weights = String(conf.theme_weights || '音楽:0.4,セキュリティ:0.3,日常:0.3');
+  var weights = String(conf.theme_weights || '基礎:0.6,音楽:0.3,日常:0.1');
 
   var specs = [];
   revenges.forEach(function (rv) {
@@ -214,13 +214,21 @@ function pickTheme_(weightsStr) {
 function generateSystemPrompt_() {
   return [
     'あなたはPython完全初心者向けの問題作成者。渡された仕様（概念・種別・テーマ・番号）に厳密に従い、JSONのみを出力する。',
-    '- 日本語。問題文は2〜3文。専門用語には短い説明を添える',
-    '- 種別がノーヒントの場合、conditionsは「関数名は `xxx`」の1項目のみ',
+    '【超初心者向けの大原則】解いている人は def/for/range/if/%/total/return をやっと使える段階。実装精度（スペル・range の +1・初期値・比較対象）でよくミスする。',
+    '- 1問につき【新しい考えは1つまで】。すでに知っている for / range / if / % / total / return を土台に組み、欲張らない',
+    '- 問題文は2〜3文で短く。ひねった物語や前提知識を要求しない。専門用語には毎回その場で短い説明を添える',
+    '- 数値は小さく（n は 10 以下が目安）。出力は数行に収め、暗算で答え合わせできる規模にする',
+    '- 種別が新規・復習・デバッグのときは、conditionsに使う構文（例「`for` を使う」「`%` を使う」「`return` で返す」）を明示して足場をかける',
+    '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
     '- 種別がデバッグの場合、buggy_codeに指定されたerror_patternのバグを1つだけ仕込み、statementには「このコードを修正して」と書く。expected_outputは修正後の正しい出力',
     '- example_callは print() を含む完全な呼び出し、expected_outputは厳密な出力（実行したときのstdoutと完全一致させる）',
     '- input() は絶対に使わせない。乱数や現在時刻など実行ごとに変わる出力も禁止',
     '- 人名・実在の固有名詞・個人情報を問題文やコードに含めない（架空のID等を使う）',
-    '- テーマ「音楽」はBPM・小節・サンプル名など、「セキュリティ」はログ集計・トークン検査・アクセス元探索などの題材にする'
+    '【テーマの作り分け】',
+    '- 「基礎」… 余計な物語をつけない素朴な数の問題（例：1からnまでの合計、偶数だけ足す、5の倍数を数える、最大値を返す）。これが主軸',
+    '- 「日常」… 買い物の合計・カレンダーなど説明不要の身近な題材。文章は最小限',
+    '- 「音楽」… BPMやテンポなど身近な題材。ただし計算は1ステップに留める（例：BPMから1拍のミリ秒＝60000÷BPM）。難しい音楽用語は出さない',
+    '- 「セキュリティ」… ログ集計・トークン検査など。※今は基礎固めの期間なので指定されたら最小限の素朴な題材にする（複雑なログ構造は使わない）'
   ].join('\n');
 }
 
