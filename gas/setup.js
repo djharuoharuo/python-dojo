@@ -188,6 +188,10 @@ function seedConfig_() {
     ['model_last_used', ''],
     ['model_checked_at', ''],
     ['model_notice', ''],
+    // セキュリティ題材の自動解放（§6）。基礎が全部習得になったら generate が一度だけ
+    // theme_weights を戻し、theme_ramp_done=TRUE にしてお祝い通知を theme_notice に書く
+    ['theme_ramp_done', ''],
+    ['theme_notice', ''],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
     ['streak_freeze_used_week', ''] // Phase 2 用

@@ -31,7 +31,7 @@ function handleRequest_(e) {
     // 読み取り系はロック不要
     if (action === 'getToday') return actionGetToday_();
     if (action === 'getHistory') return actionGetHistory_(body);
-    if (action === 'clearNotice') { setConf_('model_notice', ''); return { ok: true }; }
+    if (action === 'clearNotice') { setConf_('model_notice', ''); setConf_('theme_notice', ''); return { ok: true }; }
 
     // 書き込み系＋予算消費系はスクリプトロックで直列化
     // （採番・FSRS更新の競合と、予算カウンタ llm_budget_used の競合を根絶）
@@ -97,7 +97,10 @@ function actionGetToday_() {
     drafts: draftsForProblems_(problems.map(function (p) { return p.problem_id; })),
     // 習得済み概念のID一覧（フロントの「解放ツール」棚がどれを解放するか判定する §11）
     mastered_concepts: masteredList,
-    notice: getConf_('model_notice', '')
+    // セキュリティ題材の自動解放のお祝い（§6）とモデル通知（§5b）を1つのバナーに集約。
+    // [OK]（clearNotice）で両方クリアされる
+    notice: [getConf_('theme_notice', ''), getConf_('model_notice', '')]
+      .filter(function (s) { return s; }).join('\n')
   };
 }
 

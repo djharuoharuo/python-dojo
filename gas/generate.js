@@ -7,10 +7,17 @@
 // 新規解放の対象外にする概念（§10: tracebackはhint側で育てる常時並行枠）
 var UNLOCK_EXCLUDED = { traceback: true };
 
+// 「基礎」とみなす概念。これが全部「習得」になったら、超初心者期に0にしていた
+// セキュリティ題材を自動で解放する（§6: 同じ文法をセキュリティ文脈でも出す段階へ）
+var BASIC_CONCEPTS = ['max_search', 'total', 'for_if', 'def_args_return', 'for_range', 'if_else', 'mod'];
+// 解放後の題材配分。基礎を4割残しつつ、音楽3割・セキュリティ3割を戻す（いきなり全振りしない）
+var THEME_AFTER_RAMP = '基礎:0.4,音楽:0.3,セキュリティ:0.3';
+
 function actionGenerate_(body) {
   var conf = getConfigAll_();
   var count = Math.max(1, Math.min(5, Number(body.count) || Number(conf.daily_count || 3)));
   var concepts = readRows_('concepts');
+  maybeRestoreSecurityTheme_(concepts); // 基礎が固まっていればセキュリティ題材を解放（この生成から反映）
   var acc = recentAccuracy_(Number(conf.target_acc_low || 0.75), Number(conf.target_acc_high || 0.90));
 
   // --- リベンジ枠：期限が来た「前回間違えた問題」の類題を最大1問（テスト効果 §6） ---
@@ -27,7 +34,8 @@ function actionGenerate_(body) {
   var threshold = Number(conf.nohint_threshold || 3);
   var startNumber = Number(conf.last_problem_number || 30);
   var topPatterns = topMistakes_().map(function (m) { return m.pattern; });
-  var weights = String(conf.theme_weights || '基礎:0.6,音楽:0.3,日常:0.1');
+  // 解放が走った直後でも新しい配分を使うよう、ここで config を読み直す
+  var weights = String(getConf_('theme_weights', '基礎:0.6,音楽:0.3,日常:0.1'));
 
   var specs = [];
   revenges.forEach(function (rv) {
@@ -192,7 +200,25 @@ function decideType_(slot, threshold, acc) {
   return '復習';
 }
 
-// theme_weights（例「音楽:0.4,セキュリティ:0.3,日常:0.3」）から重み付き抽選
+// 基礎が全部「習得」になったら、セキュリティ題材を自動で解放する（一度だけ）。
+// 超初心者期は theme_weights のセキュリティを0にしている（§6）。基礎が固まった
+// タイミングで「同じ文法をセキュリティ文脈でも出す」段階へ自動移行する。
+// theme_ramp_done フラグで二度は発火しない（以後の手動調整を上書きしない）。
+// generate はロック下で呼ばれるので config 書き込みは安全（§5）。
+function maybeRestoreSecurityTheme_(concepts) {
+  if (getConf_('theme_ramp_done', '') === 'TRUE') return; // 既に解放済み（手動値を尊重）
+  var mastered = {};
+  concepts.forEach(function (c) { if (c.state === '習得') mastered[c.concept_id] = true; });
+  var allBasicsMastered = BASIC_CONCEPTS.every(function (id) { return mastered[id]; });
+  if (!allBasicsMastered) return;
+
+  setConf_('theme_weights', THEME_AFTER_RAMP);
+  setConf_('theme_ramp_done', 'TRUE');
+  // ホーム上部のバナーで本人に知らせる（getToday が notice として返す §5b）
+  setConf_('theme_notice', '🎉 基礎が固まりました！これからはセキュリティの題材（ログ集計・トークン検査など）も少しずつ出します。卒業制作（ミニ・ゼロトラストゲート）に向けて前進中です。');
+}
+
+// theme_weights（例「基礎:0.6,音楽:0.3,日常:0.1」）から重み付き抽選
 function pickTheme_(weightsStr) {
   var entries = weightsStr.split(',').map(function (s) {
     var kv = s.split(':');
