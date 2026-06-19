@@ -247,7 +247,8 @@ function generateSystemPrompt_() {
     '- 種別が新規・復習・デバッグのときは、conditionsに使う構文（例「`for` を使う」「`%` を使う」「`return` で返す」）を明示して足場をかける',
     '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
     '- 種別がデバッグの場合、buggy_codeに指定されたerror_patternのバグを1つだけ仕込み、statementには「このコードを修正して」と書く。expected_outputは修正後の正しい出力',
-    '- example_callは print() を含む完全な呼び出し、expected_outputは厳密な出力（実行したときのstdoutと完全一致させる）',
+    '- example_call は【関数の呼び出し方だけ】を示す。print(関数名(引数)) の呼び出し行のみにする（例: print(find_max([3, 8, 5]))）。【def や関数の中身＝解答は絶対に書かない】。学習者が自分でその関数を書くので、答えを見せてはいけない',
+    '- expected_output は厳密な出力（実行したときのstdoutと完全一致させる）',
     '- input() は絶対に使わせない。乱数や現在時刻など実行ごとに変わる出力も禁止',
     '- 人名・実在の固有名詞・個人情報を問題文やコードに含めない（架空のID等を使う）',
     '【テーマの作り分け】',
@@ -322,6 +323,9 @@ function validateGenerated_(json, specs) {
     if (typeof p.title !== 'string' || !p.title) return null;
     if (!Array.isArray(p.conditions) || !p.conditions.every(function (c) { return typeof c === 'string'; })) return null;
     if (typeof p.example_call !== 'string' || p.example_call.indexOf('print') === -1) return null;
+    // 答え漏れ防止（§7 答えを見せない）：呼び出し例に def（＝関数本体＝解答）が
+    // 紛れていたら無効にして作り直させる。実行例は「呼び出し方だけ」を示す行のはず
+    if (/(^|\n)\s*def\s/.test(p.example_call)) return null;
     if (typeof p.expected_output !== 'string' || !p.expected_output) return null;
     if (s.type === 'デバッグ' && (typeof p.buggy_code !== 'string' || !p.buggy_code)) return null;
     if (s.type === 'ノーヒント') p.conditions = p.conditions.slice(0, 1); // 足場は1項目のみ
