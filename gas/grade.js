@@ -60,6 +60,18 @@ function actionGrade_(body) {
     return result;
   }
 
+  // --- Stage2: 並べ替え（Parsons）。学習者が並べたコードをPyodideで実行した結果（stdout）が
+  // expected_output と一致すれば正解。LLM不使用。並べる段＝習得（昇級）には算入しない（isTrace） ---
+  if (payload.type === '並べ替え') {
+    var okParsons = stderr.indexOf('Traceback') === -1 && normalizedEquals_(stdout, payload.expected_output);
+    return finalizeAttempt_(prow, payload, {
+      code: code, stdout: stdout, stderr: stderr,
+      verdict: okParsons ? '正解' : '不正解', hintUsed: false, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: [],
+      suggestion: '', practice: practice, isTrace: true
+    });
+  }
+
   if (!code) return { error: 'bad_request', message: 'コードが空です。コードを書いてから採点してください' };
 
   // --- 一次判定はコード（§7）。Tracebackありは自動的に不正解 ---

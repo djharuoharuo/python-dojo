@@ -425,15 +425,31 @@ function openProblem(p, opts) {
   $('revenge-note').hidden = !pl.is_revenge; // 🔁 前回間違いの類題なら案内を出す
   $('practice-note').hidden = !state.practice; // 🔁 履歴からの再挑戦なら練習の案内を出す
 
-  // Stage1: 読む段（予測=出力を当てる / 説明=目的を一言で言うEiPE）。書く前に読む（§スキルラダー）。
+  // 下の段（Stage1 読む=予測/説明、Stage2 並べる=Parsons）。書く前に読む・並べる（§スキルラダー）。
   // expected_output は"答え"なので隠し、通常の解答UI（エディタ/実行/採点/ヒント）は出さない
   const isRead = p.type === '予測' || p.type === '説明';
+  const isParsons = p.type === '並べ替え';
+  const isLower = isRead || isParsons;
   $('trace-area').hidden = !isRead;
-  $('example-block').hidden = isRead;
-  $('problem-conditions').hidden = isRead;
+  $('parsons-area').hidden = !isParsons;
+  $('example-block').hidden = isLower;
+  $('problem-conditions').hidden = isLower;
   ['editor', 'draft-row', 'run-row', 'ask-area', 'hint-area', 'result-area'].forEach((id) => {
-    const el = $(id); if (el) el.hidden = isRead;
+    const el = $(id); if (el) el.hidden = isLower;
   });
+  if (isParsons) {
+    const lines = (pl.code_to_read || '').split('\n').filter((l) => l.trim() !== '');
+    state.parsonsLines = shuffleLines(lines);
+    renderParsons();
+    $('parsons-result').hidden = true;
+    $('parsons-result').innerHTML = '';
+    $('btn-parsons-check').hidden = false;
+    $('btn-parsons-check').disabled = false;
+    $('btn-parsons-next').hidden = true;
+    $('run-output').hidden = true;
+    show('screen-problem');
+    return;
+  }
   if (isRead) {
     const isExplain = p.type === '説明';
     $('trace-label').textContent = isExplain
@@ -640,6 +656,97 @@ $('btn-trace-check').onclick = async () => {
   }
 };
 $('btn-trace-next').onclick = () => {
+  if (state.practice) { loadHistory(); return; }
+  loadHome();
+};
+
+// ---- Stage2: 並べ替え（Parsons）。↑↓で行を動かして正しい順に並べる ----
+function shuffleLines(lines) {
+  if (lines.length < 2) return lines.slice();
+  const orig = lines.join('\n');
+  let a;
+  do {
+    a = lines.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+  } while (a.join('\n') === orig); // 最初から正解の並びにならないように
+  return a;
+}
+function renderParsons() {
+  const list = $('parsons-list');
+  list.innerHTML = '';
+  state.parsonsLines.forEach((line, idx) => {
+    const row = document.createElement('div');
+    row.className = 'parsons-row';
+    const up = document.createElement('button');
+    up.className = 'btn-small parsons-move';
+    up.textContent = '↑';
+    up.disabled = idx === 0;
+    up.onclick = () => moveParsons(idx, -1);
+    const down = document.createElement('button');
+    down.className = 'btn-small parsons-move';
+    down.textContent = '↓';
+    down.disabled = idx === state.parsonsLines.length - 1;
+    down.onclick = () => moveParsons(idx, 1);
+    const pre = document.createElement('pre');
+    pre.className = 'parsons-line';
+    pre.textContent = line;
+    row.appendChild(up);
+    row.appendChild(down);
+    row.appendChild(pre);
+    list.appendChild(row);
+  });
+}
+function moveParsons(idx, dir) {
+  const j = idx + dir;
+  if (j < 0 || j >= state.parsonsLines.length) return;
+  const a = state.parsonsLines;
+  [a[idx], a[j]] = [a[j], a[idx]];
+  renderParsons();
+}
+$('btn-parsons-check').onclick = async () => {
+  $('btn-parsons-check').disabled = true;
+  $('run-status').hidden = false;
+  $('run-status').textContent = '答え合わせ中…';
+  try {
+    // 並べたコードをPyodideで実行し、出力が期待どおりかで判定（順番が合えば出力が合う）
+    const assembled = state.parsonsLines.join('\n');
+    const result = await Runner.run(assembled, (msg) => { $('run-status').textContent = msg; });
+    const res = await api('grade', {
+      problem_id: state.current.problem_id,
+      code: assembled,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      stage: 'full',
+      mode: state.practice ? 'practice' : 'normal'
+    });
+    const ok = res.verdict === '正解';
+    const el = $('parsons-result');
+    el.innerHTML = '';
+    const v = document.createElement('div');
+    v.className = 'verdict ' + (ok ? 'ok' : 'ng');
+    v.textContent = ok ? '✓ 正解！順番バッチリ' : '✗ まだ違う。下の実行結果を見て並べ直そう';
+    el.appendChild(v);
+    const a = document.createElement('pre');
+    a.textContent = '今の並びの実行結果:\n' + ((result.stdout || '') + (result.stderr || '') || '(出力なし)');
+    el.appendChild(a);
+    el.hidden = false;
+    if (ok) {
+      $('btn-parsons-check').hidden = true;
+      $('btn-parsons-next').hidden = false;
+    } else {
+      $('btn-parsons-check').disabled = false; // 並べ直して再挑戦できる
+    }
+  } catch (e) {
+    showError(e.message);
+    $('btn-parsons-check').disabled = false;
+  } finally {
+    $('run-status').hidden = true;
+  }
+};
+$('btn-parsons-next').onclick = () => {
   if (state.practice) { loadHistory(); return; }
   loadHome();
 };

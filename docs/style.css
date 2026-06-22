@@ -263,6 +263,30 @@ button:disabled { opacity: 0.35; }
 }
 .trace-yours { opacity: 0.85; }
 
+/* Stage2: 並べ替え（Parsons）。↑↓で行を動かす */
+.parsons-row { display: flex; align-items: stretch; gap: 6px; margin: 6px 0; }
+.parsons-move { min-width: 42px; font-size: 1.1rem; }
+.parsons-line {
+  flex: 1;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+}
+#parsons-result { margin: 10px 0; }
+#parsons-result pre {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
 #editor {
   width: 100%;
   min-height: 220px;
