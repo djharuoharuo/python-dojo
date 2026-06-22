@@ -122,6 +122,15 @@
       <button id="btn-trace-next" class="btn-primary" hidden>次へ</button>
     </div>
 
+    <!-- Stage2: 並べ替え（Parsons）。バラバラの行を↑↓で正しい順に並べる（タッチ対応） -->
+    <div id="parsons-area" hidden>
+      <div class="trace-label">▼ バラバラの行を、正しい順番に並べよう（↑↓で動かす）</div>
+      <div id="parsons-list"></div>
+      <button id="btn-parsons-check" class="btn-primary">この順で答え合わせ</button>
+      <div id="parsons-result" hidden></div>
+      <button id="btn-parsons-next" class="btn-primary" hidden>次へ</button>
+    </div>
+
     <textarea id="editor" spellcheck="false" autocapitalize="off" autocorrect="off"
       autocomplete="off" placeholder="ここにPythonコードを書く"></textarea>
 
