@@ -425,16 +425,23 @@ function openProblem(p, opts) {
   $('revenge-note').hidden = !pl.is_revenge; // 🔁 前回間違いの類題なら案内を出す
   $('practice-note').hidden = !state.practice; // 🔁 履歴からの再挑戦なら練習の案内を出す
 
-  // Stage1: 予測（読む段/トレース）。コードを読んで出力を当てる＝書く前に読む（§スキルラダー）。
+  // Stage1: 読む段（予測=出力を当てる / 説明=目的を一言で言うEiPE）。書く前に読む（§スキルラダー）。
   // expected_output は"答え"なので隠し、通常の解答UI（エディタ/実行/採点/ヒント）は出さない
-  const isTrace = p.type === '予測';
-  $('trace-area').hidden = !isTrace;
-  $('example-block').hidden = isTrace;
-  $('problem-conditions').hidden = isTrace;
+  const isRead = p.type === '予測' || p.type === '説明';
+  $('trace-area').hidden = !isRead;
+  $('example-block').hidden = isRead;
+  $('problem-conditions').hidden = isRead;
   ['editor', 'draft-row', 'run-row', 'ask-area', 'hint-area', 'result-area'].forEach((id) => {
-    const el = $(id); if (el) el.hidden = isTrace;
+    const el = $(id); if (el) el.hidden = isRead;
   });
-  if (isTrace) {
+  if (isRead) {
+    const isExplain = p.type === '説明';
+    $('trace-label').textContent = isExplain
+      ? '▼ このコードは何をする？ 一言で説明しよう（"出力"ではなく"目的"）'
+      : '▼ このコードの出力は？ 実行する前に、頭の中で1行ずつ追って予想しよう';
+    $('trace-input').placeholder = isExplain
+      ? '例: 1からnまでの合計を返す関数'
+      : '出力されると思うものを入力（複数行ならそのまま改行で）';
     $('trace-code').textContent = pl.code_to_read || '';
     $('trace-input').value = '';
     $('trace-result').hidden = true;
@@ -556,41 +563,71 @@ $('btn-retry').onclick = () => {                 // 修正して再実行
   $('editor').focus();
 };
 
-// ---- Stage1: 予測（トレース）の答え合わせ ----
-// 正解の出力はPyodideで実際に動かして得る（オフライン可）。予測=実際なら正解。
+// ---- Stage1: 読む段の答え合わせ（予測=Pyodideで実際の出力と比較 / 説明=LLMが寛容採点） ----
 $('btn-trace-check').onclick = async () => {
-  const pred = $('trace-input').value;
-  if (!pred.trim()) { showError('まず出力を予想して入力してみよう'); return; }
+  const input = $('trace-input').value;
+  const isExplain = state.current.type === '説明';
+  if (!input.trim()) {
+    showError(isExplain ? 'まずこのコードが何をするか書いてみよう' : 'まず出力を予想して入力してみよう');
+    return;
+  }
   $('btn-trace-check').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '答え合わせ中…';
   try {
-    const code = (state.current.payload && state.current.payload.code_to_read) || '';
-    const result = await Runner.run(code, (msg) => { $('run-status').textContent = msg; });
-    const actual = result.stdout || '';
-    // サーバに記録（予測 vs 実際で判定。ストリーク・FSRSスケジュールに反映）
-    const res = await api('grade', {
-      problem_id: state.current.problem_id,
-      prediction: pred,
-      actual: actual,
-      stage: 'full',
-      mode: state.practice ? 'practice' : 'normal'
-    });
+    let res, actual = '';
+    if (isExplain) {
+      // EiPE：説明をサーバ(LLM)に送って寛容に採点。必ず模範の一言が返る
+      res = await api('grade', {
+        problem_id: state.current.problem_id,
+        explanation_text: input,
+        stage: 'full',
+        mode: state.practice ? 'practice' : 'normal'
+      });
+    } else {
+      // 予測：正解の出力はPyodideで実際に動かして得る（オフライン可）。予測=実際なら正解
+      const code = (state.current.payload && state.current.payload.code_to_read) || '';
+      const result = await Runner.run(code, (msg) => { $('run-status').textContent = msg; });
+      actual = result.stdout || '';
+      res = await api('grade', {
+        problem_id: state.current.problem_id,
+        prediction: input,
+        actual: actual,
+        stage: 'full',
+        mode: state.practice ? 'practice' : 'normal'
+      });
+    }
     const ok = res.verdict === '正解';
     const el = $('trace-result');
     el.innerHTML = '';
     const v = document.createElement('div');
-    v.className = 'verdict ' + (ok ? 'ok' : 'ng');
-    v.textContent = ok ? '✓ 正解！ちゃんと読めてる' : '✗ ちがった。実際の出力と見比べよう';
+    v.className = 'verdict ' + (ok ? 'ok' : (isExplain ? 'close' : 'ng'));
+    v.textContent = ok
+      ? (isExplain ? '✓ 正解！ 目的をつかめてる' : '✓ 正解！ちゃんと読めてる')
+      : (isExplain ? '△ おしい。模範と見比べよう' : '✗ ちがった。実際の出力と見比べよう');
     el.appendChild(v);
-    const a = document.createElement('pre');
-    a.textContent = '実際の出力:\n' + (actual || '(出力なし)');
-    el.appendChild(a);
-    if (!ok) {
-      const y = document.createElement('pre');
-      y.className = 'trace-yours';
-      y.textContent = 'あなたの予想:\n' + pred;
-      el.appendChild(y);
+    if (isExplain) {
+      if (res.eipe_model) {
+        const m = document.createElement('pre');
+        m.textContent = '模範の一言:\n' + res.eipe_model;
+        el.appendChild(m);
+      }
+      if (res.eipe_feedback) {
+        const f = document.createElement('div');
+        f.className = 'trace-yours';
+        f.textContent = res.eipe_feedback;
+        el.appendChild(f);
+      }
+    } else {
+      const a = document.createElement('pre');
+      a.textContent = '実際の出力:\n' + (actual || '(出力なし)');
+      el.appendChild(a);
+      if (!ok) {
+        const y = document.createElement('pre');
+        y.className = 'trace-yours';
+        y.textContent = 'あなたの予想:\n' + input;
+        el.appendChild(y);
+      }
     }
     el.hidden = false;
     $('btn-trace-check').hidden = true;
