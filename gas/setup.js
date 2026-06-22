@@ -192,6 +192,8 @@ function seedConfig_() {
     // theme_weights を戻し、theme_ramp_done=TRUE にしてお祝い通知を theme_notice に書く
     ['theme_ramp_done', ''],
     ['theme_notice', ''],
+    // Stage1（読む段=出力予測/トレース）を1セッションに1問混ぜる（§スキルラダー）。FALSEで停止
+    ['trace_enabled', 'TRUE'],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
     ['streak_freeze_used_week', ''] // Phase 2 用

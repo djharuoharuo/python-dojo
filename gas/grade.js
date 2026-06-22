@@ -20,7 +20,6 @@ function actionGrade_(body) {
     ? body.hints.filter(function (h) { return typeof h === 'string' && h; }).slice(0, 5)
     : [];
   if (!problemId) return { error: 'bad_request', message: 'problem_id がありません。ホームからやり直してください' };
-  if (!code) return { error: 'bad_request', message: 'コードが空です。コードを書いてから採点してください' };
   if (code.length > 20000 || stdout.length > 20000 || stderr.length > 20000) {
     return { error: 'bad_request', message: '入力が長すぎます。コードと出力を短くしてください' };
   }
@@ -28,6 +27,23 @@ function actionGrade_(body) {
   var prow = readRows_('problems').filter(function (p) { return p.problem_id === problemId; })[0];
   if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
   var payload = JSON.parse(prow.payload_json);
+
+  // --- Stage1: 予測（トレース）。正誤は「予測した出力」と「実際の出力(Pyodide実行)」の一致で決める。
+  // LLMは使わない（Pyodideが正解の出力をくれる）。書く力の前段を低負荷で鍛える（§スキルラダー） ---
+  if (payload.type === '予測') {
+    var prediction = String(body.prediction || '');
+    var actual = String(body.actual || '');
+    if (!prediction) return { error: 'bad_request', message: '出力の予測を入力してください' };
+    var okTrace = normalizedEquals_(prediction, actual);
+    return finalizeAttempt_(prow, payload, {
+      code: '予測: ' + prediction, stdout: actual, stderr: '',
+      verdict: okTrace ? '正解' : '不正解', hintUsed: false, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: [],
+      suggestion: '', practice: practice, isTrace: true
+    });
+  }
+
+  if (!code) return { error: 'bad_request', message: 'コードが空です。コードを書いてから採点してください' };
 
   // --- 一次判定はコード（§7）。Tracebackありは自動的に不正解 ---
   var isCorrect = stderr.indexOf('Traceback') === -1 &&
@@ -137,13 +153,14 @@ function finalizeAttempt_(prow, payload, r) {
   else if (r.hintUsed) rating = FSRS.Rating.Hard;
   else rating = r.easy ? FSRS.Rating.Easy : FSRS.Rating.Good;
 
-  var change = updateConceptAfterAttempt_(prow.concept_id, r.verdict, r.hintUsed, rating);
+  var change = updateConceptAfterAttempt_(prow.concept_id, r.verdict, r.hintUsed, rating, r.isTrace);
 
   if (r.errorPattern && r.errorPattern !== 'なし') bumpMistake_(r.errorPattern);
 
   // 間違えた問題は数日後に類題で再出題するキューへ（テスト効果 §6）。
-  // revengeタブ未作成（migrate前）でも採点は止めない
-  if (r.verdict !== '正解') {
+  // revengeタブ未作成（migrate前）でも採点は止めない。
+  // ※ 予測（読む段）の外しは「書く」リベンジに積まない（種別がちぐはぐになるため）
+  if (r.verdict !== '正解' && !r.isTrace) {
     try { enqueueRevenge_(prow.problem_id, prow.concept_id); } catch (e) { /* 後でmigrateすれば有効に */ }
   }
 
@@ -186,7 +203,7 @@ function correctSuggestion_(payload, code) {
 // ---------------------------------------------------------------------
 // concepts のFSRSカード更新と昇級・降格判定（§7-2,3）
 // ---------------------------------------------------------------------
-function updateConceptAfterAttempt_(conceptId, verdict, hintUsed, rating) {
+function updateConceptAfterAttempt_(conceptId, verdict, hintUsed, rating, isTrace) {
   var c = readRows_('concepts').filter(function (x) { return x.concept_id === conceptId; })[0];
   if (!c) return null;
 
@@ -201,6 +218,13 @@ function updateConceptAfterAttempt_(conceptId, verdict, hintUsed, rating) {
     lapses: next.lapses,
     last_review: todayStr_()
   };
+
+  // 読む段（予測/トレース）は FSRS のスケジュールだけ動かし、昇級材料(nohint)や状態遷移には
+  // 触れない＝「習得」は書く段（Stage3）で判定する（§スキルラダー calibration）
+  if (isTrace) {
+    updateRowWhere_('concepts', 'concept_id', conceptId, updates);
+    return null;
+  }
 
   // ノーヒント連続正解数（ヒント利用・不正解・惜しいで途切れる）
   var nohintCorrect = verdict === '正解' && !hintUsed;
