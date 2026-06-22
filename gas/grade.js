@@ -43,6 +43,23 @@ function actionGrade_(body) {
     });
   }
 
+  // --- Stage1: 説明（EiPE）。コードの"目的"を一言で説明させる。LLMが【寛容に】採点し、
+  // 必ず模範解答を見せる（読む段＝習得には算入しない・初心者を萎えさせない §スキルラダー） ---
+  if (payload.type === '説明') {
+    var explanationText = String(body.explanation_text || '');
+    if (!explanationText) return { error: 'bad_request', message: 'このコードが何をするか、一言で書いてください' };
+    var eg = gradeEipe_(payload, explanationText);
+    var result = finalizeAttempt_(prow, payload, {
+      code: '説明: ' + explanationText, stdout: '', stderr: '',
+      verdict: eg.ok ? '正解' : '惜しい', hintUsed: false, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: eg.model_used, hints: [],
+      suggestion: '', practice: practice, isTrace: true
+    });
+    result.eipe_model = eg.model_answer; // 模範の一言（必ず見せる）
+    result.eipe_feedback = eg.feedback;
+    return result;
+  }
+
   if (!code) return { error: 'bad_request', message: 'コードが空です。コードを書いてから採点してください' };
 
   // --- 一次判定はコード（§7）。Tracebackありは自動的に不正解 ---
@@ -197,6 +214,44 @@ function correctSuggestion_(payload, code) {
     return res.json && typeof res.json.suggestion === 'string' ? res.json.suggestion.trim() : '';
   } catch (e) {
     return ''; // 予算超過などでも「正解！」は返す
+  }
+}
+
+// EiPE（説明）の寛容採点。要点（コードの目的）を捉えていれば ok=true。
+// LLM障害でも止めない＝寛容に通して励ます（初心者を萎えさせないため §スキルラダー）
+function gradeEipe_(payload, explanationText) {
+  try {
+    var res = callGemini_({
+      system: [
+        'あなたはPython完全初心者の家庭教師。学習者がコードの「目的」を一言で説明する。【寛容に】採点する。JSONのみ。',
+        '- 要点（このコードが結局何をするか）を捉えていれば ok=true。言い回し違い・多少の不正確さ・言葉足らずは許す。',
+        '- まったく的外れ・空・無関係なときだけ ok=false。出力を答えただけ（目的を言えていない）は ok=false にして優しく促す。',
+        '- model_answer は一言の模範説明（初心者向け・短く・専門用語を避ける）。feedback は1文で励ます/補足。'
+      ].join('\n'),
+      user: '# コード\n' + (payload.code_to_read || '') + '\n# 学習者の説明\n' + explanationText +
+        '\n\nこの説明はコードの「目的」を捉えている？ JSONで返して。',
+      schema: {
+        type: 'OBJECT',
+        properties: {
+          ok: { type: 'BOOLEAN' },
+          model_answer: { type: 'STRING' },
+          feedback: { type: 'STRING' }
+        },
+        required: ['ok', 'model_answer', 'feedback']
+      },
+      temperature: 0.2
+    });
+    var j = res.json || {};
+    return {
+      ok: j.ok === true,
+      model_answer: typeof j.model_answer === 'string' ? j.model_answer : '',
+      feedback: typeof j.feedback === 'string' ? j.feedback : '',
+      model_used: res.model_used
+    };
+  } catch (e) {
+    if (e && e.code === 'budget') throw e; // 予算超過はそのまま上へ
+    // LLM障害：寛容に通す（自分の言葉で説明できたこと自体を肯定する）
+    return { ok: true, model_answer: '', feedback: '自分の言葉で説明できたのは大きな一歩。採点サーバが混んでいたので模範解答は次回に。', model_used: '' };
   }
 }
 

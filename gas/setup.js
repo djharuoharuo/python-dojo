@@ -194,6 +194,8 @@ function seedConfig_() {
     ['theme_notice', ''],
     // Stage1（読む段=出力予測/トレース）を1セッションに1問混ぜる（§スキルラダー）。FALSEで停止
     ['trace_enabled', 'TRUE'],
+    // 読む段で「説明(EiPE)」も予測と交互に出す（§スキルラダー）。FALSEなら予測のみ
+    ['eipe_enabled', 'TRUE'],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
     ['streak_freeze_used_week', ''] // Phase 2 用
