@@ -103,12 +103,23 @@
     <div class="problem-body">
       <p id="problem-statement"></p>
       <ul id="problem-conditions"></ul>
-      <div class="example">
+      <div class="example" id="example-block">
         <div class="example-label">実行例</div>
         <pre id="problem-example"></pre>
         <div class="example-label">期待される出力</div>
         <pre id="problem-expected"></pre>
       </div>
+    </div>
+
+    <!-- Stage1: 出力予測（トレース）。コードを読んで出力を当てる＝書く前に読む（§スキルラダー） -->
+    <div id="trace-area" hidden>
+      <div class="trace-label">▼ このコードの出力は？ 実行する前に、頭の中で1行ずつ追って予想しよう</div>
+      <pre id="trace-code"></pre>
+      <textarea id="trace-input" rows="3" spellcheck="false" autocapitalize="off"
+        autocorrect="off" autocomplete="off" placeholder="出力されると思うものを入力（複数行ならそのまま改行で）"></textarea>
+      <button id="btn-trace-check" class="btn-primary">答え合わせ</button>
+      <div id="trace-result" hidden></div>
+      <button id="btn-trace-next" class="btn-primary" hidden>次へ</button>
     </div>
 
     <textarea id="editor" spellcheck="false" autocapitalize="off" autocorrect="off"

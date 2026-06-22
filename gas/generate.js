@@ -53,8 +53,19 @@ function actionGenerate_(body) {
       }
     });
   });
+  var traceEnabled = getConf_('trace_enabled', 'TRUE') !== 'FALSE';
+  var traceUsed = false;
   slots.forEach(function (slot, i) {
-    var type = decideType_(slot, threshold, acc);
+    // 読む段（Stage1: 出力予測/トレース）を1セッションに1問だけ混ぜる＝「書く前に読む」＋
+    // インターリービング（§スキルラダー）。書く力の土台になる実装精度を低負荷で鍛える。
+    // 練習中の概念が対象。コードを読んで stdout を予測させる（書かせない）
+    var type;
+    if (traceEnabled && !traceUsed && slot.kind === 'practice') {
+      type = '予測';
+      traceUsed = true;
+    } else {
+      type = decideType_(slot, threshold, acc);
+    }
     specs.push({
       concept_id: slot.concept.concept_id,
       concept_name: slot.concept.name,
@@ -245,6 +256,7 @@ function generateSystemPrompt_() {
     '- 問題文は2〜3文で短く。ひねった物語や前提知識を要求しない。専門用語には毎回その場で短い説明を添える',
     '- 数値は小さく（n は 10 以下が目安）。出力は数行に収め、暗算で答え合わせできる規模にする',
     '- 種別が新規・復習・デバッグのときは、conditionsに使う構文（例「`for` を使う」「`%` を使う」「`return` で返す」）を明示して足場をかける',
+    '- 種別が予測（Stage1: 読む段）の場合、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「次のコードの出力を予測してください」、conditions は空配列にする。学習者はコードを読んで標準出力を予測する（書かない）ので code_to_read は完成形でよい。expected_output はそのコードの厳密な標準出力（数行・暗算で追える規模）。example_call は使わない',
     '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
     '- 種別がデバッグの場合、buggy_codeに指定されたerror_patternのバグを1つだけ仕込み、statementには「このコードを修正して」と書く。expected_outputは修正後の正しい出力',
     '- example_call は【関数の呼び出し方だけ】を示す。print(関数名(引数)) の呼び出し行のみにする（例: print(find_max([3, 8, 5]))）。【def や関数の中身＝解答は絶対に書かない】。学習者が自分でその関数を書くので、答えを見せてはいけない',
@@ -300,10 +312,11 @@ function generateSchema_() {
             example_call: { type: 'STRING' },
             expected_output: { type: 'STRING' },
             buggy_code: { type: 'STRING', nullable: true },
+            code_to_read: { type: 'STRING', nullable: true },
             theme: { type: 'STRING' }
           },
           required: ['number', 'title', 'concept_id', 'type', 'statement',
-            'conditions', 'example_call', 'expected_output', 'theme']
+            'conditions', 'expected_output', 'theme']
         }
       }
     },
@@ -322,13 +335,19 @@ function validateGenerated_(json, specs) {
     if (typeof p.statement !== 'string' || !p.statement) return null;
     if (typeof p.title !== 'string' || !p.title) return null;
     if (!Array.isArray(p.conditions) || !p.conditions.every(function (c) { return typeof c === 'string'; })) return null;
-    if (typeof p.example_call !== 'string' || p.example_call.indexOf('print') === -1) return null;
-    // 答え漏れ防止（§7 答えを見せない）：呼び出し例に def（＝関数本体＝解答）が
-    // 紛れていたら無効にして作り直させる。実行例は「呼び出し方だけ」を示す行のはず
-    if (/(^|\n)\s*def\s/.test(p.example_call)) return null;
+    if (s.type === '予測') {
+      // 読む段：完成コード(code_to_read)が必須。example_call は使わない
+      if (typeof p.code_to_read !== 'string' || !p.code_to_read) return null;
+    } else {
+      if (typeof p.example_call !== 'string' || p.example_call.indexOf('print') === -1) return null;
+      // 答え漏れ防止（§7 答えを見せない）：呼び出し例に def（＝関数本体＝解答）が
+      // 紛れていたら無効にして作り直させる。実行例は「呼び出し方だけ」を示す行のはず
+      if (/(^|\n)\s*def\s/.test(p.example_call)) return null;
+    }
     if (typeof p.expected_output !== 'string' || !p.expected_output) return null;
     if (s.type === 'デバッグ' && (typeof p.buggy_code !== 'string' || !p.buggy_code)) return null;
     if (s.type === 'ノーヒント') p.conditions = p.conditions.slice(0, 1); // 足場は1項目のみ
+    p.code_to_read = p.code_to_read || null;
     p.theme = s.theme;
     p.error_pattern = s.error_pattern || null;
     p.is_revenge = s.is_revenge || false; // リベンジ（前回間違いの類題）か

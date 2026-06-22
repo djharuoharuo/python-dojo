@@ -227,6 +227,42 @@ button:disabled { opacity: 0.35; }
   white-space: pre-wrap;
 }
 
+/* Stage1: 予測（トレース）。コードを読んで出力を当てる */
+.trace-label { color: var(--accent2); font-size: 0.9rem; margin: 10px 0 6px; }
+#trace-code {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 4px 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+#trace-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 64px;
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid #333;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+#trace-result { margin: 10px 0; }
+#trace-result pre {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.trace-yours { opacity: 0.85; }
+
 #editor {
   width: 100%;
   min-height: 220px;
