@@ -1,0 +1,65 @@
+# =====================================================================
+# deploy-gas.yml — GAS（バックエンド）の自動デプロイ。
+# gas/ に変更があり main へ push/マージされたら clasp push → 既存デプロイの
+# 更新（Web AppのURLは変えない）まで自動実行する。
+#
+# 前提（README「GAS自動デプロイのセットアップ」参照）:
+#   Secrets に CLASP_CREDENTIALS / GAS_SCRIPT_ID / GAS_DEPLOYMENT_ID を登録すること。
+#   未登録でもエラーにはなるが、PCから手動で `clasp push` する従来手順は常に有効
+#   （このActionはあくまで追加の自動化であり、必須ではない）。
+#
+# セキュリティ注記（§9拡張）:
+#   CLASP_CREDENTIALS は APP_TOKEN より強い権限（GASプロジェクトの書き換え）を持つ。
+#   漏洩時は Googleアカウント → セキュリティ → サードパーティのアクセス でこのアプリの
+#   アクセス権を取り消し、`clasp login` し直してSecretsを再登録すること。
+# =====================================================================
+name: Deploy GAS backend
+
+on:
+  push:
+    branches: [main]
+    paths: ['gas/**']
+  workflow_dispatch:
+
+concurrency:
+  group: gas-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: clasp認証情報を復元
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+        run: |
+          if [ -z "$CLASP_CREDENTIALS" ] || [ -z "$GAS_SCRIPT_ID" ]; then
+            echo "::error::Secrets CLASP_CREDENTIALS / GAS_SCRIPT_ID が未設定です。READMEの「GAS自動デプロイのセットアップ」を参照してください"
+            exit 1
+          fi
+          echo "$CLASP_CREDENTIALS" > ~/.clasprc.json
+          printf '{"scriptId":"%s","rootDir":"gas"}\n' "$GAS_SCRIPT_ID" > gas/.clasp.json
+
+      - run: npm install -g @google/clasp
+
+      - name: clasp push（ソースをGASプロジェクトへ反映）
+        run: clasp push -f
+        working-directory: gas
+
+      - name: clasp deploy（既存デプロイを更新。URL固定）
+        env:
+          GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
+        run: |
+          if [ -n "$GAS_DEPLOYMENT_ID" ]; then
+            clasp deploy -i "$GAS_DEPLOYMENT_ID" -d "auto: ${GITHUB_SHA}"
+          else
+            echo "::warning::GAS_DEPLOYMENT_ID が未設定のため push のみ実行しました。GASエディタの既存デプロイには反映されていません。READMEを参照しSecretsを追加してください"
+          fi
+        working-directory: gas
