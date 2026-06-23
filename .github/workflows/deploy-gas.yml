@@ -45,26 +45,20 @@ jobs:
             exit 1
           fi
           echo "$CLASP_CREDENTIALS" > ~/.clasprc.json
+          # scriptId に紛れ込んだ空白・改行を除去（コピペ事故対策）。残っていると
+          # GET /v1/projects/{scriptId}/content が 400「invalid argument」で落ちる
+          SCRIPT_ID=$(printf '%s' "$GAS_SCRIPT_ID" | tr -d '[:space:]')
+          echo "scriptId length (trimmed): ${#SCRIPT_ID}"  # 値は出さず長さだけ（正常なら通常57）
           # .clasp.json は gas/ 直下に置き、clasp系コマンドも working-directory: gas で実行するため
           # rootDir は「.」（.clasp.json自身と同じ階層）。"gas"にすると gas/gas/ を探しに行き失敗する
-          printf '{"scriptId":"%s","rootDir":"."}\n' "$GAS_SCRIPT_ID" > gas/.clasp.json
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$SCRIPT_ID" > gas/.clasp.json
 
       - run: npm install -g @google/clasp
 
-      - name: 診断（値は出さず形だけ確認）
-        run: |
-          clasp --version
-          echo "GAS_SCRIPT_ID length: ${#GAS_SCRIPT_ID}"
-          node -e "const j=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.clasprc.json','utf8')); console.log('clasprc.json top-level keys:', Object.keys(j));"
-          node -e "const j=JSON.parse(require('fs').readFileSync('gas/.clasp.json','utf8')); console.log('clasp.json:', j);"
-        env:
-          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
-
+      # 注意: DEBUG=clasp:* は認証トークン全文をログに出力するため絶対に付けない（§9）
       - name: clasp push（ソースをGASプロジェクトへ反映）
         run: clasp push -f
         working-directory: gas
-        env:
-          DEBUG: 'clasp:*'
 
       - name: clasp deploy（既存デプロイを更新。URL固定）
         env:
