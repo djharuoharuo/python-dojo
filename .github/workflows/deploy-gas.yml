@@ -45,7 +45,9 @@ jobs:
             exit 1
           fi
           echo "$CLASP_CREDENTIALS" > ~/.clasprc.json
-          printf '{"scriptId":"%s","rootDir":"gas"}\n' "$GAS_SCRIPT_ID" > gas/.clasp.json
+          # .clasp.json は gas/ 直下に置き、clasp系コマンドも working-directory: gas で実行するため
+          # rootDir は「.」（.clasp.json自身と同じ階層）。"gas"にすると gas/gas/ を探しに行き失敗する
+          printf '{"scriptId":"%s","rootDir":"."}\n' "$GAS_SCRIPT_ID" > gas/.clasp.json
 
       - run: npm install -g @google/clasp
 
