@@ -74,6 +74,22 @@ function actionGenerate_(body) {
       is_revenge: false
     });
   });
+
+  // Stage4「組む」：基礎が固まって自動点火(stage4_enabled=TRUE)された後だけ、書く枠を1つ
+  // 「組む」に昇格する＝仕様から完結プログラムを白紙で書かせ、テストで検証する（§15・§1）。
+  // 基礎が固まるまでは出さない（calibration）。ゼロトラスト題材は theme_weights のセキュリティで担保
+  if (getConf_('stage4_enabled', '') === 'TRUE') {
+    for (var bi = 0; bi < specs.length; bi++) {
+      var ws = specs[bi];
+      // 既に練習した書く枠（復習/ノーヒント）だけを組むに昇格。新規（初見＝お手本が要る）や
+      // デバッグ・読む段・リベンジは対象外
+      if (!ws.is_revenge && (ws.type === '復習' || ws.type === 'ノーヒント')) {
+        ws.type = '組む';
+        ws.error_pattern = null;
+        break; // 1セッション1問だけ
+      }
+    }
+  }
   specs.forEach(function (s, i) { s.number = startNumber + i + 1; });
 
   // --- Gemini 生成（検証失敗は1回だけ再生成 §6） ---
@@ -224,8 +240,9 @@ function maybeRestoreSecurityTheme_(concepts) {
 
   setConf_('theme_weights', THEME_AFTER_RAMP);
   setConf_('theme_ramp_done', 'TRUE');
+  setConf_('stage4_enabled', 'TRUE'); // 同時に Stage4「組む」も自動点火（§15: 永久後回しにしない）
   // ホーム上部のバナーで本人に知らせる（getToday が notice として返す §5b）
-  setConf_('theme_notice', '🎉 基礎が固まりました！これからはセキュリティの題材（ログ集計・トークン検査など）も少しずつ出します。卒業制作（ミニ・ゼロトラストゲート）に向けて前進中です。');
+  setConf_('theme_notice', '🎉 基礎が固まりました！これからはセキュリティの題材（ログ集計・トークン検査など）と、仕様から自分で組み立てる「組む」問題も少しずつ出します。卒業制作（ミニ・ゼロトラストゲート）に向けて前進中です。');
 }
 
 // 下の段（予測=出力を当てる/説明=EiPE/並べ替え=Parsons）から、有効なものを数で均して1つ選ぶ
@@ -274,6 +291,7 @@ function generateSystemPrompt_() {
     '- 種別が予測（Stage1: 読む段）の場合、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「次のコードの出力を予測してください」、conditions は空配列にする。学習者はコードを読んで標準出力を予測する（書かない）ので code_to_read は完成形でよい。expected_output はそのコードの厳密な標準出力（数行・暗算で追える規模）。example_call は使わない',
     '- 種別が説明（Stage1: 読む段/EiPE）の場合も、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「このコードが何をするか、一言で説明してください（出力ではなく"目的"）」、conditions は空配列。expected_output はそのコードの厳密な標準出力（保険として入れる）。example_call は使わない',
     '- 種別が並べ替え（Stage2: Parsons）の場合、その概念を使う【完成した短いコード5〜8行・空行なし】を code_to_read に入れる。学習者はこれを行ごとにバラされ、正しい順に並べ替える。各行は独立して並べ替えられるよう、過度に長い1行や複数文を1行に詰めない。インデントは正しく付けたまま（学習者は順番だけ並べる）。statement は「バラバラの行を、正しい順番に並べてください」、conditions は空配列。expected_output は厳密な標準出力。example_call は使わない',
+    '- 種別が組む（Stage4: 仕様から完結プログラムを白紙で書く）の場合、【完成コードや骨組みは絶対に出さない】。statement に「何を作るか」を自然言語の仕様で2〜4文（必要な関数の役割・入出力の意味）。function_name に書かせる関数名。conditions に満たすべき要件（箇条書き）。example_call に呼び出し例1つ、expected_output にその出力。tests に判定用テストを2〜4個（境界値を1つ含む）、各 {"call":"関数名(引数)","expected":"その出力"} の形で。code_to_read は使わない。規模は5〜12行で解ける範囲。テーマがセキュリティなら、トークン検証・許可リスト判定・fail closed など小さなゼロトラストの門番を題材にする',
     '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
     '- 種別がデバッグの場合、buggy_codeに指定されたerror_patternのバグを1つだけ仕込み、statementには「このコードを修正して」と書く。expected_outputは修正後の正しい出力',
     '- example_call は【関数の呼び出し方だけ】を示す。print(関数名(引数)) の呼び出し行のみにする（例: print(find_max([3, 8, 5]))）。【def や関数の中身＝解答は絶対に書かない】。学習者が自分でその関数を書くので、答えを見せてはいけない',
@@ -330,6 +348,15 @@ function generateSchema_() {
             expected_output: { type: 'STRING' },
             buggy_code: { type: 'STRING', nullable: true },
             code_to_read: { type: 'STRING', nullable: true },
+            function_name: { type: 'STRING', nullable: true },
+            tests: {
+              type: 'ARRAY', nullable: true,
+              items: {
+                type: 'OBJECT',
+                properties: { call: { type: 'STRING' }, expected: { type: 'STRING' } },
+                required: ['call', 'expected']
+              }
+            },
             theme: { type: 'STRING' }
           },
           required: ['number', 'title', 'concept_id', 'type', 'statement',
@@ -363,8 +390,18 @@ function validateGenerated_(json, specs) {
     }
     if (typeof p.expected_output !== 'string' || !p.expected_output) return null;
     if (s.type === 'デバッグ' && (typeof p.buggy_code !== 'string' || !p.buggy_code)) return null;
+    if (s.type === '組む') {
+      // 仕様＋判定テストが要る（完成コードは出さない＝白紙で書かせる §1）
+      if (typeof p.function_name !== 'string' || !p.function_name) return null;
+      if (!Array.isArray(p.tests) || p.tests.length < 1) return null;
+      for (var ti = 0; ti < p.tests.length; ti++) {
+        if (!p.tests[ti] || typeof p.tests[ti].call !== 'string' || typeof p.tests[ti].expected !== 'string') return null;
+      }
+    }
     if (s.type === 'ノーヒント') p.conditions = p.conditions.slice(0, 1); // 足場は1項目のみ
     p.code_to_read = p.code_to_read || null;
+    p.function_name = p.function_name || null;
+    p.tests = Array.isArray(p.tests) ? p.tests : null;
     p.theme = s.theme;
     p.error_pattern = s.error_pattern || null;
     p.is_revenge = s.is_revenge || false; // リベンジ（前回間違いの類題）か

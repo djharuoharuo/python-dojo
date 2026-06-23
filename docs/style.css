@@ -146,6 +146,26 @@ pre, textarea, code {
   color: var(--muted);
 }
 
+/* Stage4「組む」段の案内 */
+.build-note {
+  background: #2a2620;
+  border-left: 4px solid var(--accent2);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.build-test {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin: 4px 0;
+  background: var(--bg);
+}
+.build-test.pass { color: var(--accent); }
+.build-test.fail { color: var(--danger); }
+.build-tip { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+
 /* ---- ホーム ---- */
 .home-header { display: flex; justify-content: space-between; align-items: center; }
 .streak { font-size: 1rem; color: var(--accent2); font-weight: bold; }

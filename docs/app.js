@@ -424,6 +424,7 @@ function openProblem(p, opts) {
   $('problem-expected').textContent = pl.expected_output;
   $('revenge-note').hidden = !pl.is_revenge; // 🔁 前回間違いの類題なら案内を出す
   $('practice-note').hidden = !state.practice; // 🔁 履歴からの再挑戦なら練習の案内を出す
+  $('build-note').hidden = p.type !== '組む'; // 🏗 Stage4 組む段の案内（白紙・テスト判定・答えなし）
 
   // 下の段（Stage1 読む=予測/説明、Stage2 並べる=Parsons）。書く前に読む・並べる（§スキルラダー）。
   // expected_output は"答え"なので隠し、通常の解答UI（エディタ/実行/採点/ヒント）は出さない
@@ -567,10 +568,84 @@ $('btn-run').onclick = async () => {
 
 // ---- 採点 ----
 $('btn-grade').onclick = () => {
+  if (state.current.type === '組む') { gradeBuild(); return; } // Stage4はテストで判定
   // 新規＝最初からfull（worked example）。それ以外＝まずヒント段階（§7）
   const stage = state.current.type === '新規' ? 'full' : 'hint';
   grade(stage);
 };
+
+// ---- Stage4: 組む の採点（複数テストをPyodideで回し、サーバが合否を確定。答えは出さない §1） ----
+async function gradeBuild() {
+  if (!state.ran) { showError('先に[▶ 実行]して動作を確かめてから採点してください'); return; }
+  const userCode = $('editor').value;
+  if (!userCode.trim()) { showError('まずコードを書いてみよう'); return; }
+  const tests = (state.current.payload && state.current.payload.tests) || [];
+  state.gradedCode = userCode;
+  $('btn-grade').disabled = true;
+  $('run-status').hidden = false;
+  $('run-status').textContent = 'テストで採点中…';
+  try {
+    const outs = [], errs = [];
+    for (const t of tests) {
+      const r = await Runner.run(userCode + '\nprint(' + t.call + ')', (msg) => { $('run-status').textContent = msg; });
+      outs.push(r.stdout || '');
+      errs.push(r.stderr || '');
+    }
+    const res = await api('grade', {
+      problem_id: state.current.problem_id,
+      code: userCode,
+      test_outputs: outs,
+      test_errors: errs,
+      hint_used: state.hintUsed,
+      hints: state.hints,
+      stage: 'full',
+      mode: state.practice ? 'practice' : 'normal'
+    });
+    renderBuildResult(res, tests);
+  } catch (e) {
+    showError(e.message);
+    $('btn-grade').disabled = false;
+  } finally {
+    $('run-status').hidden = true;
+  }
+}
+
+function renderBuildResult(res, tests) {
+  const ok = res.verdict === '正解';
+  $('result-area').hidden = false;
+  $('verdict').textContent = ok ? '✓ 全テスト通過！完成 🎉' : '✗ まだ通らないテストがある';
+  $('verdict').className = 'verdict ' + (ok ? 'ok' : 'ng');
+  if (res.state_change) {
+    $('state-change').hidden = false;
+    $('state-change').textContent = `🎉 ${res.state_change.concept}：${res.state_change.from} → ${res.state_change.to}`;
+  } else { $('state-change').hidden = true; }
+  const exp = $('explanation');
+  exp.innerHTML = '';
+  (res.tests_passed || []).forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'build-test ' + (p ? 'pass' : 'fail');
+    // 入力(call)と合否だけ見せる。期待値そのものは見せない（ハードコード防止・自分で考える §1）
+    row.textContent = (p ? '✓ ' : '✗ ') + (tests[i] ? tests[i].call : ('テスト' + (i + 1)));
+    exp.appendChild(row);
+  });
+  if (!ok) {
+    const tip = document.createElement('p');
+    tip.className = 'build-tip';
+    tip.textContent = 'コードは見せません（自分で組む段です）。直して、もう一度［▶ 実行］→［採点する］。詰まったら「先生に聞く」で次の一歩だけ。';
+    exp.appendChild(tip);
+  }
+  // 原因1行・「次へ」は合格時だけ。不合格は自分で直す（答えは出さない §1）
+  document.querySelector('.self-note').hidden = !ok;
+  $('btn-next').hidden = !ok;
+  if (ok) {
+    state.attemptId = res.attempt_id || null;
+    $('self-note-input').value = '';
+    if (!state.practice) { state.session.total++; state.session.correct++; }
+  } else {
+    $('btn-grade').disabled = false; // 直して再採点できる
+    $('state-change').hidden = true;
+  }
+}
 $('btn-reveal').onclick = () => grade('full');   // 答えを見る
 $('btn-retry').onclick = () => {                 // 修正して再実行
   $('hint-area').hidden = true;

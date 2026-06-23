@@ -352,10 +352,17 @@ CS教育研究のはしご（**構文 → 読む/トレース → 並べる(Pars
 | Stage | 名前 | 状態 |
 |---|---|---|
 | 0 | ウォームアップ（ワークトエグザンプル＋フェード） | 未着手 |
-| 1 | 読む（出力予測/トレース） | **実装済（Phase 1）** |
-| 2 | 並べる（Parsons・distractorなし） | 未着手 |
+| 1 | 読む（出力予測=`予測` / EiPE=`説明`） | **実装済** |
+| 2 | 並べる（Parsons=`並べ替え`・distractorなし） | **実装済** |
 | 3 | 書く（スニペット） | 既存＝当面の習得バー |
-| 4 | 組む（小プログラム・足場なし・テスト検証） | 後続・最優先設計だが calibration 済 |
+| 4 | 組む（`組む`・白紙＋テスト検証・答えを出さない） | **実装済（基礎習得で自動点火・ゼロトラスト題材）** |
+
+**実装済みの種別と採点（読む/並べる/組む）:**
+- `予測`：code_to_readをPyodideで実行→実際の出力と予測を比較（LLM不使用）。習得に非算入(isTrace)。
+- `説明`(EiPE)：LLMが寛容採点＋必ず模範の一言。習得に非算入。
+- `並べ替え`(Parsons)：↑↓で並べ→実行結果がexpected_outputと一致で正解（LLM不使用）。習得に非算入。distractorなし(`parsons_distractors=FALSE`)。
+- `組む`(Stage4)：仕様＋判定テスト(`tests`)＋`function_name`。白紙のエディタ（足場なし §1）。複数テストをPyodideで回しサーバが合否確定。**不正解でも正解コードは出さない**。クリアは習得に算入。`stage4_enabled` が `maybeRestoreSecurityTheme_`（基礎全習得）で自動TRUE＝永久後回しにしない。
+- 下の段（予測/説明/並べ替え）は1セッション1問だけ、`pickReadType_` が数で均して交互（インターリービング）。各 `trace_enabled`/`eipe_enabled`/`parsons_enabled` でON/OFF。
 
 **Stage 1 実装（予測/トレース）:**
 - 新problem `type='予測'`（スキーマ変更なし＝migrate不要）。payloadに `code_to_read`（読む完成コード）を持つ。`expected_output`は答えなのでUIで隠す。
