@@ -252,6 +252,7 @@ function pickReadType_() {
   if (getConf_('trace_enabled', 'TRUE') !== 'FALSE') enabled.push('予測');
   if (getConf_('eipe_enabled', 'TRUE') !== 'FALSE') enabled.push('説明');
   if (getConf_('wayaku_enabled', 'TRUE') !== 'FALSE') enabled.push('和訳');
+  if (getConf_('tracetable_enabled', 'TRUE') !== 'FALSE') enabled.push('トレース');
   if (getConf_('parsons_enabled', 'TRUE') !== 'FALSE') enabled.push('並べ替え');
   if (enabled.length === 0) return null;
   var counts = {};
@@ -292,6 +293,7 @@ function generateSystemPrompt_() {
     '- 種別が予測（Stage1: 読む段）の場合、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「次のコードの出力を予測してください」、conditions は空配列にする。学習者はコードを読んで標準出力を予測する（書かない）ので code_to_read は完成形でよい。expected_output はそのコードの厳密な標準出力（数行・暗算で追える規模）。example_call は使わない',
     '- 種別が説明（Stage1: 読む段/EiPE）の場合も、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「このコードが何をするか、一言で説明してください（出力ではなく"目的"）」、conditions は空配列。expected_output はそのコードの厳密な標準出力（保険として入れる）。example_call は使わない',
     '- 種別が和訳（Stage1: 読む段/行ごと和訳）の場合、その概念を使う【完成した短いコード3〜5行・空行なし】を code_to_read に入れる。学習者は1行ずつ「その行が何をするか」を日本語で書く。行数を欲張らない（3〜5行）。statement は「1行ずつ、その行が何をするか日本語で書いてください」、conditions は空配列。expected_output はそのコードの厳密な標準出力（保険）。example_call は使わない',
+    '- 種別がトレース（Stage1: 読む段/変数トレース表）の場合、変数を2つほど使う【短いコード3〜6行・空行なし・ループを1つ含むとよい】を code_to_read に入れる。trace_vars に追跡する変数名を2〜3個（コード内で実際に変わる変数）。print は入れても入れなくてもよい。statement は「1行ずつ実行したとき、各変数の値がどう変わるか表に書いてください」、conditions は空配列。expected_output は厳密な標準出力（保険）。example_call は使わない',
     '- 種別が並べ替え（Stage2: Parsons）の場合、その概念を使う【完成した短いコード5〜8行・空行なし】を code_to_read に入れる。学習者はこれを行ごとにバラされ、正しい順に並べ替える。各行は独立して並べ替えられるよう、過度に長い1行や複数文を1行に詰めない。インデントは正しく付けたまま（学習者は順番だけ並べる）。statement は「バラバラの行を、正しい順番に並べてください」、conditions は空配列。expected_output は厳密な標準出力。example_call は使わない',
     '- 種別が組む（Stage4: 仕様から完結プログラムを白紙で書く）の場合、【完成コードや骨組みは絶対に出さない】。statement に「何を作るか」を自然言語の仕様で2〜4文（必要な関数の役割・入出力の意味）。function_name に書かせる関数名。conditions に満たすべき要件（箇条書き）。example_call に呼び出し例1つ、expected_output にその出力。tests に判定用テストを2〜4個（境界値を1つ含む）、各 {"call":"関数名(引数)","expected":"その出力"} の形で。code_to_read は使わない。規模は5〜12行で解ける範囲。テーマがセキュリティなら、トークン検証・許可リスト判定・fail closed など小さなゼロトラストの門番を題材にする',
     '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
@@ -351,6 +353,7 @@ function generateSchema_() {
             buggy_code: { type: 'STRING', nullable: true },
             code_to_read: { type: 'STRING', nullable: true },
             function_name: { type: 'STRING', nullable: true },
+            trace_vars: { type: 'ARRAY', nullable: true, items: { type: 'STRING' } },
             tests: {
               type: 'ARRAY', nullable: true,
               items: {
@@ -381,9 +384,11 @@ function validateGenerated_(json, specs) {
     if (typeof p.statement !== 'string' || !p.statement) return null;
     if (typeof p.title !== 'string' || !p.title) return null;
     if (!Array.isArray(p.conditions) || !p.conditions.every(function (c) { return typeof c === 'string'; })) return null;
-    if (s.type === '予測' || s.type === '説明' || s.type === '和訳' || s.type === '並べ替え') {
+    if (s.type === '予測' || s.type === '説明' || s.type === '和訳' || s.type === 'トレース' || s.type === '並べ替え') {
       // 読む/並べる段：完成コード(code_to_read)が必須。example_call は使わない
       if (typeof p.code_to_read !== 'string' || !p.code_to_read) return null;
+      // トレースは追跡する変数名(trace_vars)も必須
+      if (s.type === 'トレース' && (!Array.isArray(p.trace_vars) || p.trace_vars.length < 1)) return null;
     } else {
       if (typeof p.example_call !== 'string' || p.example_call.indexOf('print') === -1) return null;
       // 答え漏れ防止（§7 答えを見せない）：呼び出し例に def（＝関数本体＝解答）が
@@ -404,6 +409,7 @@ function validateGenerated_(json, specs) {
     p.code_to_read = p.code_to_read || null;
     p.function_name = p.function_name || null;
     p.tests = Array.isArray(p.tests) ? p.tests : null;
+    p.trace_vars = Array.isArray(p.trace_vars) ? p.trace_vars : null;
     p.theme = s.theme;
     p.error_pattern = s.error_pattern || null;
     p.is_revenge = s.is_revenge || false; // リベンジ（前回間違いの類題）か

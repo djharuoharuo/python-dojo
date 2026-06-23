@@ -104,6 +104,30 @@ function actionGrade_(body) {
     return buildRes;
   }
 
+  // --- Stage1: トレース（変数トレース表）。学習者が埋めたセルと、Pyodideで実際に実行して得た
+  // 真の値（フロントが sys.settrace で取得）をセル単位で照合。LLM不使用。読む段＝習得に算入しない ---
+  if (payload.type === 'トレース') {
+    var cells = Array.isArray(body.trace_cells) ? body.trace_cells : [];     // 学習者が書いた値
+    var actual = Array.isArray(body.trace_actual) ? body.trace_actual : [];  // Pyodideの真値
+    if (cells.length === 0 || actual.length === 0) {
+      return { error: 'bad_request', message: '表を埋めてから答え合わせしてください' };
+    }
+    var hit = 0;
+    for (var ci = 0; ci < actual.length; ci++) {
+      if (normalizedEquals_(String(cells[ci] || ''), String(actual[ci] || ''))) hit++;
+    }
+    var tverdict = hit === actual.length ? '正解' : (hit > 0 ? '惜しい' : '不正解');
+    var tres = finalizeAttempt_(prow, payload, {
+      code: 'トレース: ' + hit + '/' + actual.length, stdout: '', stderr: '',
+      verdict: tverdict, hintUsed: false, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: [],
+      suggestion: '', practice: practice, isTrace: true
+    });
+    tres.trace_hit = hit;
+    tres.trace_total = actual.length;
+    return tres;
+  }
+
   // --- Stage2: 並べ替え（Parsons）。学習者が並べたコードをPyodideで実行した結果（stdout）が
   // expected_output と一致すれば正解。LLM不使用。並べる段＝習得（昇級）には算入しない（isTrace） ---
   if (payload.type === '並べ替え') {
