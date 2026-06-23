@@ -51,9 +51,20 @@ jobs:
 
       - run: npm install -g @google/clasp
 
+      - name: 診断（値は出さず形だけ確認）
+        run: |
+          clasp --version
+          echo "GAS_SCRIPT_ID length: ${#GAS_SCRIPT_ID}"
+          node -e "const j=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.clasprc.json','utf8')); console.log('clasprc.json top-level keys:', Object.keys(j));"
+          node -e "const j=JSON.parse(require('fs').readFileSync('gas/.clasp.json','utf8')); console.log('clasp.json:', j);"
+        env:
+          GAS_SCRIPT_ID: ${{ secrets.GAS_SCRIPT_ID }}
+
       - name: clasp push（ソースをGASプロジェクトへ反映）
         run: clasp push -f
         working-directory: gas
+        env:
+          DEBUG: 'clasp:*'
 
       - name: clasp deploy（既存デプロイを更新。URL固定）
         env:
