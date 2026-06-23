@@ -128,6 +128,22 @@ function actionGrade_(body) {
     return tres;
   }
 
+  // --- Stage0: 穴埋め（お手本＋空欄/worked example）。空欄を埋めたコードをPyodideで実行した
+  // 結果が expected_output と一致すれば正解。LLM不使用。足場ありなので hint_used 扱い＝習得
+  // (nohint)には算入しない。ただし isTrace にはせず「未→練習中」の進行は通常どおり行う ---
+  if (payload.type === '穴埋め') {
+    if (!code) return { error: 'bad_request', message: '空欄を埋めてから答え合わせしてください' };
+    var okFill = stderr.indexOf('Traceback') === -1 && normalizedEquals_(stdout, payload.expected_output);
+    var fres = finalizeAttempt_(prow, payload, {
+      code: code, stdout: stdout, stderr: stderr,
+      verdict: okFill ? '正解' : '不正解', hintUsed: true, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: [],
+      suggestion: '', practice: practice
+    });
+    fres.blanks = payload.blanks || []; // 各空欄のお手本（足場段なので見せてよい）
+    return fres;
+  }
+
   // --- Stage2: 並べ替え（Parsons）。学習者が並べたコードをPyodideで実行した結果（stdout）が
   // expected_output と一致すれば正解。LLM不使用。並べる段＝習得（昇級）には算入しない（isTrace） ---
   if (payload.type === '並べ替え') {

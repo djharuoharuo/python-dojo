@@ -432,16 +432,29 @@ function openProblem(p, opts) {
   const isParsons = p.type === '並べ替え';
   const isWayaku = p.type === '和訳';
   const isTraceTable = p.type === 'トレース';
-  const isLower = isRead || isParsons || isWayaku || isTraceTable;
+  const isFill = p.type === '穴埋め';
+  const isLower = isRead || isParsons || isWayaku || isTraceTable || isFill;
   $('trace-area').hidden = !isRead;
   $('parsons-area').hidden = !isParsons;
   $('wayaku-area').hidden = !isWayaku;
   $('trace-table-area').hidden = !isTraceTable;
+  $('fill-area').hidden = !isFill;
   $('example-block').hidden = isLower;
   $('problem-conditions').hidden = isLower;
   ['editor', 'draft-row', 'run-row', 'ask-area', 'hint-area', 'result-area'].forEach((id) => {
     const el = $(id); if (el) el.hidden = isLower;
   });
+  if (isFill) {
+    renderFill(pl.code_to_read || '');
+    $('fill-result').hidden = true;
+    $('fill-result').innerHTML = '';
+    $('btn-fill-check').hidden = false;
+    $('btn-fill-check').disabled = false;
+    $('btn-fill-next').hidden = true;
+    $('run-output').hidden = true;
+    show('screen-problem');
+    return;
+  }
   if (isTraceTable) {
     $('tracetable').innerHTML = '';
     $('tt-result').hidden = true;
@@ -1056,6 +1069,79 @@ $('btn-tt-check').onclick = async () => {
   }
 };
 $('btn-tt-next').onclick = () => {
+  if (state.practice) { loadHistory(); return; }
+  loadHome();
+};
+
+// ---- Stage0: お手本＋穴埋め（faded worked example）。空欄を埋めて実行→出力一致で判定 ----
+function renderFill(code) {
+  const wrap = $('fill-code');
+  wrap.innerHTML = '';
+  state.fillInputs = {};
+  state.fillCode = code;
+  code.split(/(___\d+___)/).forEach((part) => {
+    const m = part.match(/^___(\d+)___$/);
+    if (m) {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'fill-input';
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('autocomplete', 'off');
+      inp.size = 6;
+      wrap.appendChild(inp);
+      state.fillInputs[m[1]] = inp;
+    } else if (part !== '') {
+      wrap.appendChild(document.createTextNode(part));
+    }
+  });
+}
+$('btn-fill-check').onclick = async () => {
+  const inputs = Object.values(state.fillInputs || {});
+  if (inputs.length === 0 || inputs.some((i) => !i.value.trim())) { showError('空欄を全部埋めてみよう'); return; }
+  const assembled = state.fillCode.replace(/___(\d+)___/g, (m, label) => {
+    const inp = state.fillInputs[label];
+    return inp ? inp.value : '';
+  });
+  $('btn-fill-check').disabled = true;
+  $('run-status').hidden = false;
+  $('run-status').textContent = '答え合わせ中…';
+  try {
+    const r = await Runner.run(assembled, (msg) => { $('run-status').textContent = msg; });
+    const res = await api('grade', {
+      problem_id: state.current.problem_id,
+      code: assembled,
+      stdout: r.stdout || '',
+      stderr: r.stderr || '',
+      stage: 'full',
+      mode: state.practice ? 'practice' : 'normal'
+    });
+    const ok = res.verdict === '正解';
+    const el = $('fill-result');
+    el.innerHTML = '';
+    const v = document.createElement('div');
+    v.className = 'verdict ' + (ok ? 'ok' : 'ng');
+    v.textContent = ok ? '✓ 正解！お手本の形がつかめた' : '✗ ちがう。下の実行結果とお手本を見てみよう';
+    el.appendChild(v);
+    (res.blanks || []).forEach((b) => {
+      const row = document.createElement('div');
+      row.className = 'fill-ans';
+      row.textContent = '空欄' + b.label + ' のお手本: ' + b.answer;
+      el.appendChild(row);
+    });
+    const out = document.createElement('pre');
+    out.textContent = '実行結果:\n' + ((r.stdout || '') + (r.stderr || '') || '(出力なし)');
+    el.appendChild(out);
+    el.hidden = false;
+    $('btn-fill-check').hidden = true;
+    $('btn-fill-next').hidden = false;
+  } catch (e) {
+    showError(e.message);
+    $('btn-fill-check').disabled = false;
+  } finally {
+    $('run-status').hidden = true;
+  }
+};
+$('btn-fill-next').onclick = () => {
   if (state.practice) { loadHistory(); return; }
   loadHome();
 };
