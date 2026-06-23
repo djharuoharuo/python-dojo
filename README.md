@@ -61,11 +61,18 @@ clasp push                        # gas/ のソースをアップロード
 
 1. PCで `cat ~/.clasprc.json` の内容を全部コピー
    → GitHub Secrets に **`CLASP_CREDENTIALS`** として貼る
-2. `cat gas/.clasp.json` の `scriptId` の値をコピー
-   → Secrets に **`GAS_SCRIPT_ID`** として貼る
+2. `cat gas/.clasp.json` を表示し、`scriptId` の **引用符の中身だけ**をコピー
+   → Secrets に **`GAS_SCRIPT_ID`** として貼る（**前後に空白・改行を入れない**）
+   - スクリプトIDは通常**57文字**。手で選ぶと1文字欠けやすいので、欠け対策に
+     `node -e "console.log(require('./gas/.clasp.json').scriptId)"`（リポジトリ直下で実行）
+     の出力をそのままコピーすると確実
 3. `clasp deployments` で、手順3で作った「ウェブアプリ」デプロイのIDを確認
    → Secrets に **`GAS_DEPLOYMENT_ID`** として貼る（これがあるとデプロイURLが変わらない）
 4. 以後、`gas/` に変更を加えてmainにpush/マージすると `deploy-gas.yml` が自動で反映する
+
+> **うまくいかない時**: Actionのログに `Request contains an invalid argument.`（400）と出たら、
+> ほぼ `GAS_SCRIPT_ID` の貼り間違い（文字欠け・空白混入）。手順2でIDを貼り直す。
+> なお原因調査で `DEBUG=clasp:*` を付けると**認証トークンがログに平文で出てしまう**ので付けないこと。
 
 > **セキュリティ注記**: `CLASP_CREDENTIALS` は `APP_TOKEN` より強い権限（GASプロジェクト自体の
 > 書き換え）を持つ。漏洩が疑われたら [Googleアカウントのサードパーティアクセス管理](https://myaccount.google.com/connections)
