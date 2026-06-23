@@ -60,6 +60,32 @@ function actionGrade_(body) {
     return result;
   }
 
+  // --- Stage4: 組む（仕様から白紙でプログラムを書く）。複数のテストケースで判定（実開発と同じ）。
+  // 不正解でも【正解コードは絶対に出さない】（§1: 最上段で足場を外す）。組むのクリアは習得に算入する ---
+  if (payload.type === '組む') {
+    if (!code) return { error: 'bad_request', message: 'コードを書いてから採点してください' };
+    var tests = Array.isArray(payload.tests) ? payload.tests : [];
+    var outs = Array.isArray(body.test_outputs) ? body.test_outputs : [];
+    var errs = Array.isArray(body.test_errors) ? body.test_errors : [];
+    var passed = [];
+    var allPass = tests.length > 0;
+    for (var ti = 0; ti < tests.length; ti++) {
+      var tok = String(errs[ti] || '').indexOf('Traceback') === -1 &&
+        normalizedEquals_(String(outs[ti] || ''), String(tests[ti].expected));
+      passed.push(tok);
+      if (!tok) allPass = false;
+    }
+    var buildRes = finalizeAttempt_(prow, payload, {
+      code: code, stdout: outs.join('\n'), stderr: errs.join('\n'),
+      verdict: allPass ? '正解' : '不正解', hintUsed: hintUsed, easy: easy,
+      errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints,
+      suggestion: '', practice: practice
+    });
+    buildRes.tests_passed = passed; // UIが各テストの合否を出す（正解コードは出さない）
+    buildRes.tests_total = tests.length;
+    return buildRes;
+  }
+
   // --- Stage2: 並べ替え（Parsons）。学習者が並べたコードをPyodideで実行した結果（stdout）が
   // expected_output と一致すれば正解。LLM不使用。並べる段＝習得（昇級）には算入しない（isTrace） ---
   if (payload.type === '並べ替え') {

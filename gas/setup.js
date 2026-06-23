@@ -200,6 +200,9 @@ function seedConfig_() {
     ['parsons_enabled', 'TRUE'],
     // Parsonsにダミー行(distractor)を混ぜるか。超初心者期はFALSE（§15・元仕様§5）
     ['parsons_distractors', 'FALSE'],
+    // Stage4「組む」（仕様から白紙で書く・テスト検証）。基礎が全部習得になったら generate が
+    // 自動でTRUEにする（§15: 永久後回しにしない）。それまでは出さない＝難しすぎ防止
+    ['stage4_enabled', ''],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
     ['streak_freeze_used_week', ''] // Phase 2 用
