@@ -132,6 +132,16 @@
       <button id="btn-wayaku-next" class="btn-primary" hidden>次へ</button>
     </div>
 
+    <!-- Stage1: 変数トレース表。1行ずつ各変数の値を埋める＝頭の中の実行モデル(notional machine) -->
+    <div id="trace-table-area" hidden>
+      <div class="trace-label">▼ 1行ずつ実行したとき、各変数の値はどうなる？ 上から順に埋めよう（最初は空欄でOK）</div>
+      <div id="tt-status" class="loading" hidden></div>
+      <div id="tracetable"></div>
+      <button id="btn-tt-check" class="btn-primary" hidden>答え合わせ</button>
+      <div id="tt-result" hidden></div>
+      <button id="btn-tt-next" class="btn-primary" hidden>次へ</button>
+    </div>
+
     <!-- Stage2: 並べ替え（Parsons）。バラバラの行を↑↓で正しい順に並べる（タッチ対応） -->
     <div id="parsons-area" hidden>
       <div class="trace-label">▼ バラバラの行を、正しい順番に並べよう（↑↓で動かす）</div>

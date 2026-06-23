@@ -198,6 +198,8 @@ function seedConfig_() {
     ['eipe_enabled', 'TRUE'],
     // 読む段で「和訳（1行ずつ日本語に訳す）」も輪番に入れる（§15・読む力の核）。FALSEで停止
     ['wayaku_enabled', 'TRUE'],
+    // 読む段で「変数トレース表（1行ずつ変数の値を追う＝notional machine）」も輪番に。FALSEで停止
+    ['tracetable_enabled', 'TRUE'],
     // Stage2「並べ替え(Parsons)」も下の段の輪番に入れる（§スキルラダー）。FALSEで停止
     ['parsons_enabled', 'TRUE'],
     // Parsonsにダミー行(distractor)を混ぜるか。超初心者期はFALSE（§15・元仕様§5）

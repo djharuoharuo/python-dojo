@@ -431,15 +431,30 @@ function openProblem(p, opts) {
   const isRead = p.type === '予測' || p.type === '説明';
   const isParsons = p.type === '並べ替え';
   const isWayaku = p.type === '和訳';
-  const isLower = isRead || isParsons || isWayaku;
+  const isTraceTable = p.type === 'トレース';
+  const isLower = isRead || isParsons || isWayaku || isTraceTable;
   $('trace-area').hidden = !isRead;
   $('parsons-area').hidden = !isParsons;
   $('wayaku-area').hidden = !isWayaku;
+  $('trace-table-area').hidden = !isTraceTable;
   $('example-block').hidden = isLower;
   $('problem-conditions').hidden = isLower;
   ['editor', 'draft-row', 'run-row', 'ask-area', 'hint-area', 'result-area'].forEach((id) => {
     const el = $(id); if (el) el.hidden = isLower;
   });
+  if (isTraceTable) {
+    $('tracetable').innerHTML = '';
+    $('tt-result').hidden = true;
+    $('tt-result').innerHTML = '';
+    $('btn-tt-check').hidden = true;
+    $('btn-tt-next').hidden = true;
+    $('run-output').hidden = true;
+    $('tt-status').hidden = false;
+    $('tt-status').textContent = 'Python起動中…';
+    show('screen-problem');
+    setupTraceTable(pl); // Pyodideで真の変数推移を計算して表を組む（非同期）
+    return;
+  }
   if (isWayaku) {
     const lines = (pl.code_to_read || '').split('\n').filter((l) => l.trim() !== '');
     renderWayaku(lines);
@@ -907,6 +922,140 @@ $('btn-wayaku-check').onclick = async () => {
   }
 };
 $('btn-wayaku-next').onclick = () => {
+  if (state.practice) { loadHistory(); return; }
+  loadHome();
+};
+
+// ---- Stage1: 変数トレース表。Pyodideの sys.settrace で「各行を実行する直前の変数の値」の
+// タイムラインを取得＝真値（LLM不使用）。学習者がそれを表に予想して埋める ----
+function buildTraceHarness(code, vars) {
+  // code と vars を JSON文字列にして安全にPythonへ埋め込む（JSONのエスケープはPython文字列でも有効）
+  return [
+    'import sys, json',
+    '_t = ' + JSON.stringify(vars),
+    '_log = []',
+    'def _tr(f, e, a):',
+    "    if e == 'line' and f.f_code.co_filename == '<dojo>':",
+    '        _log.append([f.f_lineno, {k: str(v) for k, v in f.f_locals.items() if k in _t}])',
+    '    return _tr',
+    '_src = ' + JSON.stringify(code),
+    '_g = {}',
+    "_c = compile(_src, '<dojo>', 'exec')",
+    'sys.settrace(_tr)',
+    'try:',
+    '    exec(_c, _g)',
+    'except Exception:',
+    '    pass',
+    'finally:',
+    '    sys.settrace(None)',
+    '_log.append(["END", {k: str(_g[k]) for k in _t if k in _g}])',
+    'print(json.dumps(_log, ensure_ascii=False))'
+  ].join('\n');
+}
+async function setupTraceTable(pl) {
+  const code = pl.code_to_read || '';
+  const vars = (pl.trace_vars || []).filter((v) => typeof v === 'string' && v);
+  try {
+    const r = await Runner.run(buildTraceHarness(code, vars), (msg) => { $('tt-status').textContent = msg; });
+    let timeline = [];
+    try { timeline = JSON.parse((r.stdout || '').trim()); } catch (e) { timeline = []; }
+    if (!Array.isArray(timeline) || timeline.length === 0) {
+      $('tt-status').textContent = 'この問題の準備に失敗しました。[← ホーム]から別の問題へ。';
+      return;
+    }
+    renderTraceTable(code, vars, timeline);
+    $('tt-status').hidden = true;
+    $('btn-tt-check').hidden = false;
+    $('btn-tt-check').disabled = false;
+  } catch (e) {
+    $('tt-status').textContent = 'エラー: ' + e.message;
+  }
+}
+function renderTraceTable(code, vars, timeline) {
+  const codeLines = code.split('\n');
+  const tbl = document.createElement('table');
+  tbl.className = 'tt-table';
+  const head = document.createElement('tr');
+  const th0 = document.createElement('th');
+  th0.textContent = '実行する行';
+  head.appendChild(th0);
+  vars.forEach((v) => { const th = document.createElement('th'); th.textContent = v; head.appendChild(th); });
+  tbl.appendChild(head);
+  state.ttInputs = [];
+  state.ttActual = [];
+  timeline.forEach((entry) => {
+    const lineRef = entry[0];
+    const valmap = entry[1] || {};
+    const tr = document.createElement('tr');
+    const lineCell = document.createElement('td');
+    const pre = document.createElement('pre');
+    pre.className = 'tt-line';
+    pre.textContent = lineRef === 'END' ? '— 実行が終わった後 —' : (codeLines[lineRef - 1] || ('行' + lineRef));
+    lineCell.appendChild(pre);
+    tr.appendChild(lineCell);
+    vars.forEach((v) => {
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'tt-input';
+      inp.setAttribute('autocapitalize', 'off');
+      inp.setAttribute('autocomplete', 'off');
+      td.appendChild(inp);
+      tr.appendChild(td);
+      state.ttInputs.push(inp);
+      state.ttActual.push(Object.prototype.hasOwnProperty.call(valmap, v) ? String(valmap[v]) : '');
+    });
+    tbl.appendChild(tr);
+  });
+  const wrap = $('tracetable');
+  wrap.innerHTML = '';
+  wrap.appendChild(tbl);
+}
+$('btn-tt-check').onclick = async () => {
+  const cells = (state.ttInputs || []).map((i) => i.value);
+  $('btn-tt-check').disabled = true;
+  $('run-status').hidden = false;
+  $('run-status').textContent = '答え合わせ中…';
+  try {
+    const res = await api('grade', {
+      problem_id: state.current.problem_id,
+      trace_cells: cells,
+      trace_actual: state.ttActual,
+      stage: 'full',
+      mode: state.practice ? 'practice' : 'normal'
+    });
+    const norm = (s) => String(s).trim();
+    (state.ttActual || []).forEach((truth, i) => {
+      const inp = state.ttInputs[i];
+      const ok = norm(inp.value) === norm(truth);
+      inp.classList.add(ok ? 'tt-ok' : 'tt-ng');
+      inp.disabled = true;
+      if (!ok) {
+        const s = document.createElement('span');
+        s.className = 'tt-correct';
+        s.textContent = '正: ' + (truth === '' ? '（まだ無い）' : truth);
+        inp.parentNode.appendChild(s);
+      }
+    });
+    const el = $('tt-result');
+    el.innerHTML = '';
+    const v = document.createElement('div');
+    v.className = 'verdict ' + (res.verdict === '正解' ? 'ok' : 'close');
+    v.textContent = res.verdict === '正解'
+      ? '✓ 全部合ってる！実行を頭で追えてる'
+      : ('△ ' + (res.trace_hit || 0) + '/' + (res.trace_total || state.ttActual.length) + ' 正解。色つきセルの「正」を見て、なぜそうなるか追ってみよう');
+    el.appendChild(v);
+    el.hidden = false;
+    $('btn-tt-check').hidden = true;
+    $('btn-tt-next').hidden = false;
+  } catch (e) {
+    showError(e.message);
+    $('btn-tt-check').disabled = false;
+  } finally {
+    $('run-status').hidden = true;
+  }
+};
+$('btn-tt-next').onclick = () => {
   if (state.practice) { loadHistory(); return; }
   loadHome();
 };
