@@ -207,6 +207,8 @@ function seedConfig_() {
     // Stage4「組む」（仕様から白紙で書く・テスト検証）。基礎が全部習得になったら generate が
     // 自動でTRUEにする（§15: 永久後回しにしない）。それまでは出さない＝難しすぎ防止
     ['stage4_enabled', ''],
+    // Stage0「穴埋め」（新規概念の初回をお手本＋空欄にする）。FALSEなら従来の worked example「新規」
+    ['stage0_enabled', 'TRUE'],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
     ['streak_freeze_used_week', ''] // Phase 2 用

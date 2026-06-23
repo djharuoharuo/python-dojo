@@ -351,7 +351,7 @@ CS教育研究のはしご（**構文 → 読む/トレース → 並べる(Pars
 
 | Stage | 名前 | 状態 |
 |---|---|---|
-| 0 | ウォームアップ（ワークトエグザンプル＋フェード） | 未着手 |
+| 0 | ウォームアップ（お手本＋穴埋め=`穴埋め`・新規概念の初回） | **実装済** |
 | 1 | 読む（出力予測=`予測` / EiPE=`説明` / 行ごと和訳=`和訳` / 変数トレース表=`トレース`） | **実装済** |
 | 2 | 並べる（Parsons=`並べ替え`・distractorなし） | **実装済** |
 | 3 | 書く（スニペット） | 既存＝当面の習得バー |
@@ -364,7 +364,8 @@ CS教育研究のはしご（**構文 → 読む/トレース → 並べる(Pars
 - `トレース`：1行ずつ各変数の値を表に埋める。フロントが Pyodide の `sys.settrace` で真の変数推移を取得し、サーバがセル比較（LLM不使用）。習得に非算入（notional machine を作る）。
 - `並べ替え`(Parsons)：↑↓で並べ→実行結果がexpected_outputと一致で正解（LLM不使用）。習得に非算入。distractorなし(`parsons_distractors=FALSE`)。
 - `組む`(Stage4)：仕様＋判定テスト(`tests`)＋`function_name`。白紙のエディタ（足場なし §1）。複数テストをPyodideで回しサーバが合否確定。**不正解でも正解コードは出さない**。クリアは習得に算入。`stage4_enabled` が `maybeRestoreSecurityTheme_`（基礎全習得）で自動TRUE＝永久後回しにしない。
-- 下の段（予測/説明/並べ替え）は1セッション1問だけ、`pickReadType_` が数で均して交互（インターリービング）。各 `trace_enabled`/`eipe_enabled`/`parsons_enabled` でON/OFF。
+- `穴埋め`(Stage0)：新規概念の初回。完成お手本コードの重要部分1〜2か所を `___1___` で空欄化＋`blanks`に答え。埋めて実行→出力一致で正解（LLM不使用）。足場ありなので `hint_used` 扱い＝習得(nohint)には算入しないが「未→練習中」の進行はする。`stage0_enabled`（既定TRUE）。
+- 下の段（予測/説明/和訳/トレース/並べ替え）は1セッション1問だけ、`pickReadType_` が数で均して交互（インターリービング）。各 `trace_enabled`/`eipe_enabled`/`wayaku_enabled`/`tracetable_enabled`/`parsons_enabled` でON/OFF。Stage0「穴埋め」は新規枠を `decideType_` が差し替える（`stage0_enabled`）。
 
 **Stage 1 実装（予測/トレース）:**
 - 新problem `type='予測'`（スキーマ変更なし＝migrate不要）。payloadに `code_to_read`（読む完成コード）を持つ。`expected_output`は答えなのでUIで隠す。

@@ -319,6 +319,31 @@ button:disabled { opacity: 0.35; }
 .tt-input.tt-ng { border-color: var(--danger); }
 .tt-correct { display: block; color: var(--accent); font-size: 0.8rem; margin-top: 2px; }
 
+/* Stage0: お手本＋穴埋め（faded worked example） */
+.fill-code {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  overflow-x: auto;
+  line-height: 2;
+}
+.fill-input {
+  display: inline-block;
+  min-width: 48px;
+  padding: 2px 6px;
+  margin: 0 2px;
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--accent2);
+  border: 1px solid var(--accent2);
+  font-family: inherit;
+}
+.fill-ans { color: var(--accent); font-size: 0.9rem; margin: 4px 0; }
+#fill-result pre { background: var(--bg); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-x: auto; }
+
 /* Stage2: 並べ替え（Parsons）。↑↓で行を動かす */
 .parsons-row { display: flex; align-items: stretch; gap: 6px; margin: 6px 0; }
 .parsons-move { min-width: 42px; font-size: 1.1rem; }
