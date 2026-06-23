@@ -430,14 +430,28 @@ function openProblem(p, opts) {
   // expected_output は"答え"なので隠し、通常の解答UI（エディタ/実行/採点/ヒント）は出さない
   const isRead = p.type === '予測' || p.type === '説明';
   const isParsons = p.type === '並べ替え';
-  const isLower = isRead || isParsons;
+  const isWayaku = p.type === '和訳';
+  const isLower = isRead || isParsons || isWayaku;
   $('trace-area').hidden = !isRead;
   $('parsons-area').hidden = !isParsons;
+  $('wayaku-area').hidden = !isWayaku;
   $('example-block').hidden = isLower;
   $('problem-conditions').hidden = isLower;
   ['editor', 'draft-row', 'run-row', 'ask-area', 'hint-area', 'result-area'].forEach((id) => {
     const el = $(id); if (el) el.hidden = isLower;
   });
+  if (isWayaku) {
+    const lines = (pl.code_to_read || '').split('\n').filter((l) => l.trim() !== '');
+    renderWayaku(lines);
+    $('wayaku-result').hidden = true;
+    $('wayaku-result').innerHTML = '';
+    $('btn-wayaku-check').hidden = false;
+    $('btn-wayaku-check').disabled = false;
+    $('btn-wayaku-next').hidden = true;
+    $('run-output').hidden = true;
+    show('screen-problem');
+    return;
+  }
   if (isParsons) {
     const lines = (pl.code_to_read || '').split('\n').filter((l) => l.trim() !== '');
     state.parsonsLines = shuffleLines(lines);
@@ -822,6 +836,77 @@ $('btn-parsons-check').onclick = async () => {
   }
 };
 $('btn-parsons-next').onclick = () => {
+  if (state.practice) { loadHistory(); return; }
+  loadHome();
+};
+
+// ---- Stage1: 行ごと和訳。各行に日本語の説明を書く → LLMが寛容採点＋各行のお手本を表示 ----
+function renderWayaku(lines) {
+  const list = $('wayaku-list');
+  list.innerHTML = '';
+  state.wayakuInputs = [];
+  lines.forEach((line) => {
+    const row = document.createElement('div');
+    row.className = 'wayaku-row';
+    const pre = document.createElement('pre');
+    pre.className = 'wayaku-line';
+    pre.textContent = line;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'wayaku-input';
+    inp.setAttribute('autocapitalize', 'off');
+    inp.setAttribute('autocomplete', 'off');
+    inp.placeholder = 'この行は…';
+    row.appendChild(pre);
+    row.appendChild(inp);
+    list.appendChild(row);
+    state.wayakuInputs.push(inp);
+  });
+}
+$('btn-wayaku-check').onclick = async () => {
+  const descs = (state.wayakuInputs || []).map((i) => i.value);
+  if (!descs.some((d) => d.trim() !== '')) { showError('1行でもいいので日本語で書いてみよう'); return; }
+  $('btn-wayaku-check').disabled = true;
+  $('run-status').hidden = false;
+  $('run-status').textContent = '答え合わせ中…';
+  try {
+    const res = await api('grade', {
+      problem_id: state.current.problem_id,
+      line_descs: descs,
+      stage: 'full',
+      mode: state.practice ? 'practice' : 'normal'
+    });
+    const ok = res.verdict === '正解';
+    const el = $('wayaku-result');
+    el.innerHTML = '';
+    const v = document.createElement('div');
+    v.className = 'verdict ' + (ok ? 'ok' : 'close');
+    v.textContent = ok ? '✓ よく読めてる！' : '△ おしい。お手本と見比べよう';
+    el.appendChild(v);
+    (res.wayaku_lines || []).forEach((ln) => {
+      const fb = document.createElement('div');
+      fb.className = 'wayaku-fb ' + (ln.ok ? 'pass' : 'fail');
+      const code = document.createElement('pre');
+      code.className = 'wayaku-line';
+      code.textContent = (ln.ok ? '✓ ' : '・ ') + ln.line;
+      const model = document.createElement('div');
+      model.className = 'wayaku-model';
+      model.textContent = 'お手本: ' + (ln.model || '(なし)');
+      fb.appendChild(code);
+      fb.appendChild(model);
+      el.appendChild(fb);
+    });
+    el.hidden = false;
+    $('btn-wayaku-check').hidden = true;
+    $('btn-wayaku-next').hidden = false;
+  } catch (e) {
+    showError(e.message);
+    $('btn-wayaku-check').disabled = false;
+  } finally {
+    $('run-status').hidden = true;
+  }
+};
+$('btn-wayaku-next').onclick = () => {
   if (state.practice) { loadHistory(); return; }
   loadHome();
 };

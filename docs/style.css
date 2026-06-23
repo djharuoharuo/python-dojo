@@ -283,6 +283,32 @@ button:disabled { opacity: 0.35; }
 }
 .trace-yours { opacity: 0.85; }
 
+/* Stage1: 行ごと和訳。各行に日本語の説明を書く */
+.wayaku-row { margin: 8px 0; }
+.wayaku-line {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+}
+.wayaku-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid #333;
+}
+.wayaku-fb { margin: 8px 0; }
+.wayaku-fb.pass .wayaku-line { border-left: 3px solid var(--accent); }
+.wayaku-fb.fail .wayaku-line { border-left: 3px solid var(--accent2); }
+.wayaku-model { color: var(--muted); font-size: 0.9rem; padding: 2px 10px; }
+
 /* Stage2: 並べ替え（Parsons）。↑↓で行を動かす */
 .parsons-row { display: flex; align-items: stretch; gap: 6px; margin: 6px 0; }
 .parsons-move { min-width: 42px; font-size: 1.1rem; }

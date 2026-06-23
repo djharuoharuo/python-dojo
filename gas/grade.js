@@ -60,6 +60,24 @@ function actionGrade_(body) {
     return result;
   }
 
+  // --- Stage1: 和訳（コードを1行ずつ日本語に訳す）。LLMが【寛容に】各行を採点し、必ず各行の
+  // お手本和訳を返す。読む段なので習得には算入しない(isTrace)。不正解で詰めない（惜しい止まり） ---
+  if (payload.type === '和訳') {
+    var lineDescs = Array.isArray(body.line_descs) ? body.line_descs.map(function (s) { return String(s || ''); }) : [];
+    if (!lineDescs.some(function (s) { return s.trim() !== ''; })) {
+      return { error: 'bad_request', message: '1行でもいいので、行の意味を日本語で書いてください' };
+    }
+    var wg = gradeWayaku_(payload, lineDescs);
+    var wres = finalizeAttempt_(prow, payload, {
+      code: '和訳: ' + lineDescs.join(' / '), stdout: '', stderr: '',
+      verdict: wg.overall_ok ? '正解' : '惜しい', hintUsed: false, easy: false,
+      errorPattern: 'なし', explanation: null, modelUsed: wg.model_used, hints: [],
+      suggestion: '', practice: practice, isTrace: true
+    });
+    wres.wayaku_lines = wg.lines; // 各行の {line, ok, model} をUIへ（お手本和訳を必ず見せる）
+    return wres;
+  }
+
   // --- Stage4: 組む（仕様から白紙でプログラムを書く）。複数のテストケースで判定（実開発と同じ）。
   // 不正解でも【正解コードは絶対に出さない】（§1: 最上段で足場を外す）。組むのクリアは習得に算入する ---
   if (payload.type === '組む') {
@@ -290,6 +308,48 @@ function gradeEipe_(payload, explanationText) {
     if (e && e.code === 'budget') throw e; // 予算超過はそのまま上へ
     // LLM障害：寛容に通す（自分の言葉で説明できたこと自体を肯定する）
     return { ok: true, model_answer: '', feedback: '自分の言葉で説明できたのは大きな一歩。採点サーバが混んでいたので模範解答は次回に。', model_used: '' };
+  }
+}
+
+// 和訳（1行ずつ日本語に訳す）の寛容採点。各行を甘く判定し、必ず各行の模範和訳を返す。
+// LLM障害でも止めない＝寛容に通して励ます（§スキルラダー・モチベ設計）
+function gradeWayaku_(payload, lineDescs) {
+  var codeLines = String(payload.code_to_read || '').split('\n').filter(function (l) { return l.trim() !== ''; });
+  try {
+    var res = callGemini_({
+      system: [
+        'あなたはPython完全初心者の家庭教師。学習者がコードを1行ずつ日本語に訳す（その行が何をするか）。【寛容に】採点する。JSONのみ。',
+        '- 各行について、学習者の説明が要点を捉えていれば ok=true（言い回し違い・言葉足らずは許す）。空や的外れだけ ok=false。',
+        '- model は各行の模範の和訳（初心者向け・短く・専門用語を避ける）。必ず全行ぶん、行の順番どおりに返す。',
+        '- overall_ok は「半分以上の行が ok」なら true（励ます方向）。'
+      ].join('\n'),
+      user: '# コード（行番号:中身）\n' + codeLines.map(function (l, i) { return i + ': ' + l; }).join('\n') +
+        '\n# 学習者の各行の説明\n' + codeLines.map(function (l, i) { return i + ': ' + (lineDescs[i] || '(空)'); }).join('\n') +
+        '\n\n各行を寛容に採点し、各行の模範和訳を JSON で。',
+      schema: {
+        type: 'OBJECT',
+        properties: {
+          lines: {
+            type: 'ARRAY',
+            items: { type: 'OBJECT', properties: { ok: { type: 'BOOLEAN' }, model: { type: 'STRING' } }, required: ['ok', 'model'] }
+          },
+          overall_ok: { type: 'BOOLEAN' }
+        },
+        required: ['lines', 'overall_ok']
+      },
+      temperature: 0.2
+    });
+    var j = res.json || {};
+    var arr = Array.isArray(j.lines) ? j.lines : [];
+    var lines = codeLines.map(function (l, i) {
+      var item = arr[i] || {};
+      return { line: l, ok: item.ok === true, model: typeof item.model === 'string' ? item.model : '' };
+    });
+    return { lines: lines, overall_ok: j.overall_ok === true, model_used: res.model_used };
+  } catch (e) {
+    if (e && e.code === 'budget') throw e;
+    var lines2 = codeLines.map(function (l) { return { line: l, ok: true, model: '' }; });
+    return { lines: lines2, overall_ok: true, model_used: '' };
   }
 }
 

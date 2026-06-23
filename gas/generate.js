@@ -251,6 +251,7 @@ function pickReadType_() {
   var enabled = [];
   if (getConf_('trace_enabled', 'TRUE') !== 'FALSE') enabled.push('予測');
   if (getConf_('eipe_enabled', 'TRUE') !== 'FALSE') enabled.push('説明');
+  if (getConf_('wayaku_enabled', 'TRUE') !== 'FALSE') enabled.push('和訳');
   if (getConf_('parsons_enabled', 'TRUE') !== 'FALSE') enabled.push('並べ替え');
   if (enabled.length === 0) return null;
   var counts = {};
@@ -290,6 +291,7 @@ function generateSystemPrompt_() {
     '- 種別が新規・復習・デバッグのときは、conditionsに使う構文（例「`for` を使う」「`%` を使う」「`return` で返す」）を明示して足場をかける',
     '- 種別が予測（Stage1: 読む段）の場合、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「次のコードの出力を予測してください」、conditions は空配列にする。学習者はコードを読んで標準出力を予測する（書かない）ので code_to_read は完成形でよい。expected_output はそのコードの厳密な標準出力（数行・暗算で追える規模）。example_call は使わない',
     '- 種別が説明（Stage1: 読む段/EiPE）の場合も、その概念を使う【完成した短いコード5〜10行】を code_to_read に入れる。statement は「このコードが何をするか、一言で説明してください（出力ではなく"目的"）」、conditions は空配列。expected_output はそのコードの厳密な標準出力（保険として入れる）。example_call は使わない',
+    '- 種別が和訳（Stage1: 読む段/行ごと和訳）の場合、その概念を使う【完成した短いコード3〜5行・空行なし】を code_to_read に入れる。学習者は1行ずつ「その行が何をするか」を日本語で書く。行数を欲張らない（3〜5行）。statement は「1行ずつ、その行が何をするか日本語で書いてください」、conditions は空配列。expected_output はそのコードの厳密な標準出力（保険）。example_call は使わない',
     '- 種別が並べ替え（Stage2: Parsons）の場合、その概念を使う【完成した短いコード5〜8行・空行なし】を code_to_read に入れる。学習者はこれを行ごとにバラされ、正しい順に並べ替える。各行は独立して並べ替えられるよう、過度に長い1行や複数文を1行に詰めない。インデントは正しく付けたまま（学習者は順番だけ並べる）。statement は「バラバラの行を、正しい順番に並べてください」、conditions は空配列。expected_output は厳密な標準出力。example_call は使わない',
     '- 種別が組む（Stage4: 仕様から完結プログラムを白紙で書く）の場合、【完成コードや骨組みは絶対に出さない】。statement に「何を作るか」を自然言語の仕様で2〜4文（必要な関数の役割・入出力の意味）。function_name に書かせる関数名。conditions に満たすべき要件（箇条書き）。example_call に呼び出し例1つ、expected_output にその出力。tests に判定用テストを2〜4個（境界値を1つ含む）、各 {"call":"関数名(引数)","expected":"その出力"} の形で。code_to_read は使わない。規模は5〜12行で解ける範囲。テーマがセキュリティなら、トークン検証・許可リスト判定・fail closed など小さなゼロトラストの門番を題材にする',
     '- 種別がノーヒントの場合だけ、conditionsは「関数名は `xxx`」の1項目のみ（どの構文を使うかは本人に選ばせる）',
@@ -379,7 +381,7 @@ function validateGenerated_(json, specs) {
     if (typeof p.statement !== 'string' || !p.statement) return null;
     if (typeof p.title !== 'string' || !p.title) return null;
     if (!Array.isArray(p.conditions) || !p.conditions.every(function (c) { return typeof c === 'string'; })) return null;
-    if (s.type === '予測' || s.type === '説明' || s.type === '並べ替え') {
+    if (s.type === '予測' || s.type === '説明' || s.type === '和訳' || s.type === '並べ替え') {
       // 読む/並べる段：完成コード(code_to_read)が必須。example_call は使わない
       if (typeof p.code_to_read !== 'string' || !p.code_to_read) return null;
     } else {

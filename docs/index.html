@@ -123,6 +123,15 @@
       <button id="btn-trace-next" class="btn-primary" hidden>次へ</button>
     </div>
 
+    <!-- Stage1: 行ごと和訳。コードを1行ずつ日本語に訳す（読む力の核・Block Model/Xie） -->
+    <div id="wayaku-area" hidden>
+      <div class="trace-label">▼ 1行ずつ「この行は何をする？」を日本語で書こう（全部じゃなくてOK・お手本が出ます）</div>
+      <div id="wayaku-list"></div>
+      <button id="btn-wayaku-check" class="btn-primary">答え合わせ</button>
+      <div id="wayaku-result" hidden></div>
+      <button id="btn-wayaku-next" class="btn-primary" hidden>次へ</button>
+    </div>
+
     <!-- Stage2: 並べ替え（Parsons）。バラバラの行を↑↓で正しい順に並べる（タッチ対応） -->
     <div id="parsons-area" hidden>
       <div class="trace-label">▼ バラバラの行を、正しい順番に並べよう（↑↓で動かす）</div>
