@@ -99,9 +99,10 @@
       <label class="cap-label" for="cap-exp">ひとこと（自分の言葉で。書くだけで定着します）</label>
       <textarea id="cap-exp" rows="3" maxlength="400" spellcheck="false" autocapitalize="off" autocorrect="off"
         placeholder="例: 関数の中で作った変数は外から見えない。外の変数を書き換えるには global が要る"></textarea>
-      <label class="cap-label" for="cap-src">出典（任意・本や章）</label>
-      <input type="text" id="cap-src" maxlength="120" autocapitalize="off" autocorrect="off" autocomplete="off"
-        placeholder="例: みんなのPython 第7章">
+      <label class="cap-label" for="cap-src">出典（任意・本のタイトル。前に使った本は選べます）</label>
+      <input type="text" id="cap-src" list="cap-src-list" maxlength="120" autocapitalize="off" autocorrect="off" autocomplete="off"
+        placeholder="例: みんなのPython">
+      <datalist id="cap-src-list"></datalist>
       <button id="btn-cap-submit" class="btn-primary">この概念を復習キューに入れる</button>
     </div>
 

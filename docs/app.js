@@ -22,6 +22,9 @@ const state = {
   session: { total: 0, correct: 0, close: 0, hintCorrect: 0, changes: [] } // 今日の進歩サマリ素材
 };
 
+// 過去に使った出典（本のタイトル）候補。getToday が返す。捕捉フォームの選択リストに使う
+let captureSources = [];
+
 // ---------------------------------------------------------------------
 // 解答の途中保存（下書き）。ブラウザ内（localStorage）に問題ごとに保存する。
 // コード・もらったヒント・した質問をまとめて残し、同じ問題を開くと続きから再開できる。
@@ -152,6 +155,7 @@ async function loadHome() {
     state.problems = data.problems;
     state.serverDrafts = data.drafts || {}; // PC↔スマホ共有の下書き
     state.masteredConcepts = data.mastered_concepts || []; // 解放ツール判定用
+    captureSources = data.capture_sources || []; // 出典（本のタイトル）候補
     renderHome(data);
   } catch (e) {
     showError(e.message);
@@ -1561,7 +1565,7 @@ function openCapture() {
   capState.logId = null;
   $('cap-name').value = '';
   $('cap-exp').value = '';
-  $('cap-src').value = '';
+  renderCaptureSources(); // 出典の候補リストを用意し、直近の本を初期表示
   $('cap-match').hidden = true;
   $('cap-match').innerHTML = '';
   $('cap-status').hidden = true;
@@ -1570,6 +1574,21 @@ function openCapture() {
   $('capture-form').hidden = false;
   $('btn-cap-submit').disabled = false;
   show('screen-capture');
+}
+
+// 出典の候補（datalist）を用意し、直近に使った本を初期表示する。
+// 同じ本から何章も捕捉することが多いので、毎回打ち直さず選べる（違う本なら消して入力/選択し直せる）。
+function renderCaptureSources() {
+  const dl = $('cap-src-list');
+  if (dl) {
+    dl.innerHTML = '';
+    captureSources.forEach((s) => {
+      const o = document.createElement('option');
+      o.value = s;
+      dl.appendChild(o);
+    });
+  }
+  $('cap-src').value = captureSources.length ? captureSources[0] : '';
 }
 
 // 入力 → 名寄せ候補を取得（LLM不使用・読み取りのみ §5）
@@ -1634,6 +1653,9 @@ async function confirmCapture(attach) {
     capState.conceptId = res.concept_id;
     capState.conceptName = res.concept_name || capState.conceptName;
     capState.logId = res.log_id || null;
+    // 今回使った出典を候補の先頭に入れておく（同セッションで続けて捕捉する時すぐ選べる）
+    const usedSrc = $('cap-src').value.trim();
+    if (usedSrc) captureSources = [usedSrc].concat(captureSources.filter((s) => s !== usedSrc));
   } catch (e) {
     $('cap-status').hidden = true;
     showError(e.message);
