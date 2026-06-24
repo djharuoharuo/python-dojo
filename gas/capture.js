@@ -418,6 +418,19 @@ function captureConceptsSummary_() {
   });
 }
 
+// 過去に使った出典（本のタイトル等）を新しい順・重複なしで返す。
+// 捕捉フォームの候補リスト（datalist）に使う＝同じ本の別章を打ち直さず選べるように。
+function captureSources_() {
+  var rows = readRowsSafe_('learning_log');
+  var seen = {};
+  var out = [];
+  for (var i = rows.length - 1; i >= 0; i--) { // 新しい順
+    var s = String(rows[i].source_ref || '').trim();
+    if (s && !seen[s]) { seen[s] = true; out.push(s); }
+  }
+  return out.slice(0, 30);
+}
+
 // Nodeスモークテスト用にエクスポート（ブラウザ/GASでは無視される）
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {

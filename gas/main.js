@@ -107,6 +107,8 @@ function actionGetToday_() {
     // 本で読んで捕捉した概念の現況（学習キャプチャ §1）。残り問題数・due を返し、
     // 残り0かつdue到来は「もう一度練習を作る」候補としてホームに出す
     captures: captureConceptsSummary_(),
+    // 過去に使った出典（本のタイトル）。捕捉フォームで選べるようにする（同じ本の別章を打ち直さない）
+    capture_sources: captureSources_(),
     // セキュリティ題材の自動解放のお祝い（§6）とモデル通知（§5b）を1つのバナーに集約。
     // [OK]（clearNotice）で両方クリアされる
     notice: [getConf_('theme_notice', ''), getConf_('model_notice', '')]
