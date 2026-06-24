@@ -1544,8 +1544,11 @@ $('timer-overlay-ok').onclick = () => { $('timer-overlay').hidden = true; };
 //   コードはブラウザのPyodideでしか実行できないので、検証はこのフロント側が担う。
 // =====================================================================
 const capState = { conceptId: null, conceptName: '', selfExp: '', logId: null };
-const CAP_TARGET = 2;       // 揃えたい検証済み問題数（サーバ capture_predict_count に対応）
-const CAP_MAX_RETRIES = 3;  // 検証で落ちたとき作り直す最大回数（§2: 破棄→再生成→スキップ）
+// 揃えたい検証済み問題数／作り直しの最大回数。サーバの config（capture_predict_count・
+// capture_regen_retries）の既定値に合わせてある。チューニングする時は両方を合わせること
+// （フロントは config を直接読まないため）。
+const CAP_TARGET = 2;
+const CAP_MAX_RETRIES = 3;
 
 if ($('btn-capture')) $('btn-capture').onclick = openCapture;
 if ($('btn-capture-back')) $('btn-capture-back').onclick = () => loadHome();
