@@ -155,17 +155,22 @@ function pickSlots_(concepts, count, acc) {
   var slots = [];
   var usedIds = {};
 
+  // 学習キャプチャ概念（source=capture）は通常の（未検証）generateからは除外する。
+  // §2: capture概念の問題は必ずPyodide検証ゲートを通したものだけ＝capture専用パイプラインで作る。
+  // ここで未検証の出題を作ってしまうと「間違いを正しいものとして」覚える事故になる。
+  var isCapture = function (c) { return c.source === 'capture'; };
+
   // 復習枠：due超過の習得概念のうち最も古いもの1つ
   var reviewable = concepts.filter(function (c) {
-    return c.state === '習得' && c.no_review !== 'TRUE' && c.due && c.due <= today;
+    return c.state === '習得' && c.no_review !== 'TRUE' && c.due && c.due <= today && !isCapture(c);
   }).sort(function (a, b) { return a.due < b.due ? -1 : 1; });
   if (reviewable[0]) {
     slots.push({ concept: reviewable[0], kind: 'review' });
     usedIds[reviewable[0].concept_id] = true;
   }
 
-  // 練習中：弱点優先（lapses多い順→ノーヒント連続が短い順）
-  var practicing = concepts.filter(function (c) { return c.state === '練習中'; })
+  // 練習中：弱点優先（lapses多い順→ノーヒント連続が短い順）。capture概念は除外（上記§2の理由）
+  var practicing = concepts.filter(function (c) { return c.state === '練習中' && !isCapture(c); })
     .sort(function (a, b) {
       var d = Number(b.lapses || 0) - Number(a.lapses || 0);
       return d !== 0 ? d : Number(a.nohint_streak || 0) - Number(b.nohint_streak || 0);
@@ -175,7 +180,7 @@ function pickSlots_(concepts, count, acc) {
   var unlock = null;
   if (acc !== 'low') {
     unlock = concepts.filter(function (c) {
-      if (c.state !== '未' || UNLOCK_EXCLUDED[c.concept_id]) return false;
+      if (c.state !== '未' || UNLOCK_EXCLUDED[c.concept_id] || isCapture(c)) return false;
       var prereqs = String(c.prereq || '').split(',').map(function (s) { return s.trim(); }).filter(String);
       return prereqs.every(function (pid) {
         var p = concepts.filter(function (x) { return x.concept_id === pid; })[0];

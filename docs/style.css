@@ -648,3 +648,25 @@ button:disabled { opacity: 0.35; }
   font-size: 1rem;
 }
 #summary-body ul { padding-left: 20px; }
+
+/* ---- 学習キャプチャ（本で読む→捕捉→FSRS復習キュー §1,§2） ---- */
+.captures-shelf { margin-top: 14px; }
+.captures-shelf .shelf-head { color: var(--muted); font-size: 0.9rem; margin: 10px 0 6px; }
+.captures-shelf .shelf-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  background: var(--panel); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 6px;
+}
+.cap-label { display: block; color: var(--muted); font-size: 0.9rem; margin: 12px 0 4px; }
+#screen-capture input[type="text"], #screen-capture textarea {
+  width: 100%; background: var(--panel2); color: var(--text);
+  border: 1px solid #333a48; border-radius: var(--radius); padding: 10px 12px;
+  font-size: 16px; font-family: inherit;
+}
+#screen-capture #btn-cap-submit { margin-top: 14px; }
+.cap-match { margin-top: 16px; background: var(--panel); border-radius: var(--radius); padding: 12px; }
+.cap-match-head { color: var(--muted); font-size: 0.92rem; margin-bottom: 8px; }
+.cap-choice { display: block; width: 100%; text-align: left; margin: 6px 0; }
+.cap-result { margin-top: 16px; }
+.cap-result .cap-ok { color: var(--accent); font-weight: bold; margin-bottom: 8px; }
+.cap-result .cap-note { color: var(--muted); font-size: 0.9rem; margin-bottom: 10px; }
+.cap-result button { display: block; width: 100%; margin: 8px 0; }

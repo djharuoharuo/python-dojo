@@ -376,3 +376,32 @@ CS教育研究のはしご（**構文 → 読む/トレース → 並べる(Pars
 - **トレースは習得（昇級）に算入しない**：`updateConceptAfterAttempt_` は `isTrace` でFSRSスケジュールだけ更新し、`nohint_streak`/`nohint_correct_days`/状態遷移には触れない。外しても**リベンジに積まない・mistakesを増やさない**（種別がちぐはぐになるため）。ストリーク・履歴・FSRS間隔にだけ効く。
 
 **フェーズ計画:** Phase 1=Stage 1（済）→ Phase 2=Stage 2(Parsons) → Phase 3=Stage 0(ワークトエグザンプル＋フェード) → Phase 4=Stage 4(組む・レベル連動)。各フェーズは migrate非破壊・既存を壊さない・答えを出さない原則を厳守。
+
+## 16. 学習キャプチャ（本で読む→捕捉→FSRS復習キュー→検証済み問題）
+
+「本で新項目を読む→その場で分かる→キューに入る経路が無く忘れる」という、中心ループの欠けた配線を埋める機能（アクセサリではなく根幹）。忘却対策は再読でもマーカーでもなく**間隔をあけた想起(spaced retrieval)**だけ＝FSRSは既に載っているので、足りない**入口**を足す。自由欄に「学んだことを自分の言葉で書く」行為自体が**自己説明(generation effect)**で定着を上げる（記録と学習の二役）。
+
+### 16.1 絶対原則 — §2 検証ゲート（安全性の全て）
+**Geminiが生成した問題は、表示・保存の前に必ずPyodideで実行し正解を確定する。** 学習者は今日習ったばかりで、正解が間違っていても見抜けない＝未検証の問題を出すと「間違いを正しいものとして」覚える最悪の事故になる。Stage1で確立した「**Pyodideを正とし、答えにLLMを使わない**」原則を**生成側にも適用**する。Geminiは問題を提案するだけ、真偽はPyodideが決める。コードはブラウザのPyodideでしか実行できないので、検証は**フロントが担う**：
+- `captureCandidates`（GAS）= Geminiで“たね”（完成コード）を作る・**未検証**・problemsには保存しない
+- フロントが各コードを `Runner.run` で実行 → タイムアウト無し・Traceback無し・出力が空でない → **実stdoutを正解(expected_output)に確定**。落ちたら破棄→最大 `capture_regen_retries` 回再生成→それでもダメならスキップ（ユーザーをブロックしない §11）
+- `commitProblems`（GAS）= 検証済みだけ `verified='TRUE', source='capture'` で保存
+- 生成コードの制約：`input()`・乱数・日時・ファイル/ネット/OS依存を禁止（`captureCodeAllowed_` がGAS側でも多層で弾く）。決定的＝Pyodideで検証可能にするため
+
+### 16.2 v1の範囲（予測型のみ）
+v1の問題タイプは**「予測（Stage1: 出力予測/読む段）」のみ**。理由：(a)読んだコードの出力を当てる練習は本で読んだ直後の定着に最適（§15の下段＝書く力を予測する）、(b)検証が最も安全（実行した実stdoutがそのまま正解＝模範解答が要らない）、(c)既存の `予測` 描画・採点を100%再利用。**「組む（白紙で書く）」型の捕捉**はこの予測経路が実機で確認できてから次段で足す（参照解＋テスト検証が要るため）。
+
+### 16.3 概念の扱い（§5 名寄せ・recurrence）
+- **名寄せ**（`matchConcepts_`・LLM不使用・決定的）：入力名を既存concepts（name/concept_id/aliases）と突き合わせ候補を提示。**最終決定はユーザーの1タップ**（「既存に紐づけ／新規作成」）。同義概念の二重登録を防ぐ＝習得モデルは概念単位が命。既存に紐づけた時は今回の言い方を `aliases` に足す
+- **新規概念**：`state=練習中, source=capture, due=今日`、FSRSカードは初回採点で初期化（`loadCard_` が reps=0 で createEmptyCard）。**first-classの繰り返しカード**として復習に乗る（「一門だけやって終わり」にしない＝ユーザー要件）
+- **§2を破らないための隔離**：capture概念は**通常の（未検証）generateから除外**（`pickSlots_` が `source==='capture'` を弾く）。出題は必ず検証パイプライン経由。recurrenceは「検証済みバッチの消費」＋FSRSの due 到来で棚に出る「🔁もう一度作る」（検証ループを再実行）で回す
+
+### 16.4 データ構造（migrate非破壊・§8）
+- 新タブ `learning_log`：log_id / timestamp / raw_text / self_explanation / source_ref / concept_id / generated_problem_ids
+- `concepts` に列追加：`source`（空=シード, 'capture'）/ `aliases`（名寄せ別名）
+- `problems` に列追加：`verified`（'TRUE'=Pyodide検証済み）/ `source`（'capture'）
+- `config`：capture_enabled / capture_predict_count / capture_build_count / capture_regen_retries / capture_immediate_count。**`migrate()` が `ensureConfigDefaults_` で既存シートに不足キーを足す**（既存値は上書きしない）
+- ⚠️**新機能なので導入後に GASエディタで `migrate()` を1回**（learning_logタブ・新列・新configキーを足す）。未実行でも概念登録は止めないが、機能を完全に使うには migrate 必須
+
+### 16.5 受け入れ基準（§11該当分）
+未検証の生成問題が一切表示されない／予測はPyodideの実stdoutを正解にしている／禁止要素混入コードは破棄／破棄→再生成→スキップでブロックされない／名寄せで同義概念が二重登録されない／捕捉概念がFSRSキューに乗り後日出題される／日次予算到達時も**捕捉とFSRS登録は動く**（生成だけ保留）／既存(Stage1/ヒント/履歴/下書き/解放ツール)がデグレしない／**Notion非連携**（dojo内で完結）

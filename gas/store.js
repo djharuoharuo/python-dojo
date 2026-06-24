@@ -8,10 +8,18 @@ var SHEET_HEADERS = {
   concepts: [
     'concept_id', 'name', 'state', 'prereq', 'no_review',
     'due', 'stability', 'difficulty', 'reps', 'lapses', 'last_review',
-    'nohint_streak', 'nohint_correct_days'
+    'nohint_streak', 'nohint_correct_days',
+    // 由来。空＝シード（§10の初期概念）、'capture'＝本で読んで自分で捕捉した概念（学習キャプチャ）。
+    // capture概念は「検証ゲートを通った問題」だけを出す（§2）ので、未検証の通常generateからは除外する。
+    // aliases＝名寄せ（§5）用の別名（カンマ区切り。同義語を二重登録しないため）
+    // ※ 列は必ず末尾に追加（既存行の列位置がずれないように）
+    'source', 'aliases'
   ],
   problems: [
-    'problem_id', 'number', 'concept_id', 'type', 'payload_json', 'status', 'created_at'
+    'problem_id', 'number', 'concept_id', 'type', 'payload_json', 'status', 'created_at',
+    // 学習キャプチャ用（§2 検証ゲート）。verified='TRUE' は Pyodide で実行して正解を確定済み。
+    // source='capture' は本で読んで捕捉した概念から作った問題。どちらも末尾追加・空欄は後方互換
+    'verified', 'source'
   ],
   attempts: [
     'attempt_id', 'timestamp', 'problem_id', 'concept_id', 'type', 'verdict',
@@ -29,6 +37,9 @@ var SHEET_HEADERS = {
   // リベンジ再テスト：間違えた問題を数日後に類題で再出題するための待ち行列（§6 テスト効果）
   revenge: ['problem_id', 'concept_id', 'due', 'status'],
   mistakes: ['pattern', 'count', 'last_seen'],
+  // 学習キャプチャ：本で読んで「学んだこと」を1行記録し、名寄せ結果の概念に紐づける（学習キャプチャ §8）。
+  // この概念がFSRS復習キューに乗り、検証済みの問題が生成される。generated_problem_ids は生成した問題のID（カンマ区切り）
+  learning_log: ['log_id', 'timestamp', 'raw_text', 'self_explanation', 'source_ref', 'concept_id', 'generated_problem_ids'],
   config: ['key', 'value']
 };
 
