@@ -164,11 +164,14 @@ function actionCaptureCandidates_(body) {
   var conceptName = String(body.concept_name || '').trim();
   var selfExp = String(body.self_explanation || '').trim();
   if (!conceptName) return { error: 'bad_request', message: '概念名がありません' };
-  var n = Math.max(1, Math.min(4, Number(body.predict_count) || Number(getConf_('capture_predict_count', 2))));
+  // 予測（読む段）と組む（書く段）の生成数。書く段は §2 でも参照解をPyodide検証してから出す
+  var nPredict = clampCount_(body.predict_count, getConf_('capture_predict_count', 2));
+  var nBuild = clampCount_(body.build_count, getConf_('capture_build_count', 1));
+  if (nPredict + nBuild === 0) nPredict = 1;
 
   var res = callGemini_({
     system: captureSystemPrompt_(),
-    user: captureUserPrompt_(conceptName, selfExp, n),
+    user: captureUserPrompt_(conceptName, selfExp, nPredict, nBuild),
     schema: captureSchema_(),
     temperature: 0.7
   });
@@ -179,24 +182,47 @@ function actionCaptureCandidates_(body) {
   return { candidates: candidates, model_used: res.model_used };
 }
 
+// 0〜4 に丸める（生成数の安全弁）
+function clampCount_(v, def) {
+  var n = Number(v);
+  if (!isFinite(n) || n < 0) n = Number(def);
+  if (!isFinite(n) || n < 0) n = 0;
+  return Math.max(0, Math.min(4, Math.floor(n)));
+}
+
 function captureSystemPrompt_() {
   return [
-    'あなたはPython完全初心者向けの「出力予測クイズ」作成者。指定された概念を使う【完成した短いコード】だけをJSONで出力する。',
-    '学習者はそのコードを読んで標準出力を予測する（コードは書かない）。だから完成形でよい。',
-    '【厳守】',
-    '- 各コードは5〜10行で完結し、それ単体で実行できること（未定義の関数・変数を残さない）。',
-    '- 必ず print で数行の出力を出す。出力は暗算で追える小さな規模（数値は10以下が目安）。',
-    '- 指定された概念が主役になるように使う。1コードにつき新しい考えは1つだけ。',
-    '- 【決定的であること】input()・乱数・現在時刻・ファイル/ネットワーク/OS依存を絶対に使わない（実行のたびに出力が変わるものは禁止）。',
+    'あなたはPython完全初心者向けの問題作成者。指定された概念を使う問題のJSONだけを出力する。種別は2つ。',
+    '',
+    '■ kind="predict"（出力予測：読む段）',
+    '学習者は完成コードを読んで標準出力を予測する（書かない）。',
+    '- code_to_read に5〜10行の【完成した短いコード】（単体で実行でき、未定義の関数・変数を残さない）。',
+    '- 必ず print で数行の出力を出す。出力は暗算で追える規模（数値は10以下が目安）。',
+    '- title は短い見出し。期待出力は書かなくてよい（こちらで実行して確定する）。',
+    '',
+    '■ kind="build"（組む：白紙で書く段）',
+    '学習者は仕様だけを見て関数を白紙から書く。【完成コードや骨組みは絶対に学習者に見せない】。',
+    '- statement に「何を作るか」を自然言語で2〜4文（関数の役割・入出力の意味）。',
+    '- function_name に書かせる関数名。conditions に満たすべき要件を箇条書き（1〜3項目）。',
+    '- tests に判定用テストを2〜4個、各 {"call":"関数名(引数)", "expected":"その標準出力"}。境界値を1つ含める。',
+    '- reference_solution に【検証専用の模範解答】（完成コード）。これは学習者には出さない＝こちらがPyodideで実行し、',
+    '  全テストが通ることを確認するためだけに使う。tests の expected は reference_solution を実行した正しい出力にする。',
+    '- 規模は5〜12行で解ける範囲。title は短い見出し。',
+    '',
+    '【全種別で厳守】',
+    '- 指定された概念が主役。1問につき新しい考えは1つだけ。',
+    '- 【決定的であること】input()・乱数・現在時刻・ファイル/ネットワーク/OS依存を絶対に使わない（reference_solution も同様）。',
     '- 人名・実在の固有名詞・個人情報を入れない（架空のID等にする）。',
-    '- title は短い見出し（例「スコープの確認」）。code_to_read に完成コードを入れる。kind は必ず "predict"。',
-    '- 期待出力は書かなくてよい（こちらで実行して確定する）。'
+    '- 各候補に kind を必ず付ける。使わないフィールドは null でよい。'
   ].join('\n');
 }
 
-function captureUserPrompt_(conceptName, selfExp, n) {
-  return '概念「' + conceptName + '」を使う出力予測クイズのコードを' + n + '個、JSONで作ってください。' +
-    (selfExp ? '\n学習者はこの概念をこう理解しています（参考）:「' + selfExp + '」。この理解を確かめられる素直な例にしてください。' : '') +
+function captureUserPrompt_(conceptName, selfExp, nPredict, nBuild) {
+  var parts = [];
+  if (nPredict > 0) parts.push('kind="predict"（出力予測）を' + nPredict + '個');
+  if (nBuild > 0) parts.push('kind="build"（組む・白紙で書く）を' + nBuild + '個');
+  return '概念「' + conceptName + '」の問題を、' + parts.join('・') + '、合わせてJSONの candidates 配列で作ってください。' +
+    (selfExp ? '\n学習者はこの概念をこう理解しています（参考）:「' + selfExp + '」。この理解を確かめられる素直な題材にしてください。' : '') +
     '\nそれぞれ別の側面・別の具体例にして、似すぎないようにしてください。';
 }
 
@@ -211,9 +237,23 @@ function captureSchema_() {
           properties: {
             kind: { type: 'STRING' },
             title: { type: 'STRING' },
-            code_to_read: { type: 'STRING' }
+            // predict 用
+            code_to_read: { type: 'STRING', nullable: true },
+            // build 用
+            statement: { type: 'STRING', nullable: true },
+            function_name: { type: 'STRING', nullable: true },
+            conditions: { type: 'ARRAY', nullable: true, items: { type: 'STRING' } },
+            tests: {
+              type: 'ARRAY', nullable: true,
+              items: {
+                type: 'OBJECT',
+                properties: { call: { type: 'STRING' }, expected: { type: 'STRING' } },
+                required: ['call', 'expected']
+              }
+            },
+            reference_solution: { type: 'STRING', nullable: true }
           },
-          required: ['kind', 'title', 'code_to_read']
+          required: ['kind', 'title']
         }
       }
     },
@@ -221,19 +261,46 @@ function captureSchema_() {
   };
 }
 
-// Geminiの“たね”を検証用候補に整える（純関数に近い：禁止要素はここでも弾く §2 多層防御）。
-// 期待出力はまだ無い＝フロントのPyodide検証で確定する。
+// Geminiの“たね”を検証用候補に整える（禁止要素はここでも弾く §2 多層防御）。
+// 予測は期待出力をまだ持たず、組むは reference_solution を持つ＝どちらもフロントのPyodide検証で確定する。
 function validateCaptureCandidates_(json, conceptId, conceptName) {
   if (!json || !Array.isArray(json.candidates)) return [];
   var out = [];
   json.candidates.forEach(function (c) {
-    if (!c || typeof c.code_to_read !== 'string' || !c.code_to_read.trim()) return;
+    if (!c) return;
+    var title = typeof c.title === 'string' && c.title ? c.title : (conceptName + ' の問題');
+    if (c.kind === 'build') {
+      // 組む：仕様＋テスト＋検証用の模範解答が必須。模範解答も決定的でなければ破棄（§2）
+      if (typeof c.function_name !== 'string' || !c.function_name.trim()) return;
+      if (typeof c.statement !== 'string' || !c.statement.trim()) return;
+      if (typeof c.reference_solution !== 'string' || !c.reference_solution.trim()) return;
+      if (!captureCodeAllowed_(c.reference_solution)) return;
+      var tests = Array.isArray(c.tests) ? c.tests.filter(function (t) {
+        return t && typeof t.call === 'string' && t.call.trim() &&
+          typeof t.expected === 'string' && captureCodeAllowed_(t.call);
+      }) : [];
+      if (tests.length < 1) return;
+      out.push({
+        kind: 'build',
+        concept_id: conceptId,
+        concept_name: conceptName,
+        title: title,
+        statement: c.statement,
+        function_name: c.function_name,
+        conditions: Array.isArray(c.conditions) ? c.conditions.filter(function (x) { return typeof x === 'string'; }) : [],
+        tests: tests.map(function (t) { return { call: t.call, expected: t.expected }; }),
+        reference_solution: c.reference_solution // フロント検証用。commit では保存しない（学習者に見せない §11）
+      });
+      return;
+    }
+    // それ以外は予測として扱う（完成コードが必須）
+    if (typeof c.code_to_read !== 'string' || !c.code_to_read.trim()) return;
     if (!captureCodeAllowed_(c.code_to_read)) return; // 非決定的・環境依存は破棄（§2）
     out.push({
       kind: 'predict',
       concept_id: conceptId,
       concept_name: conceptName,
-      title: typeof c.title === 'string' && c.title ? c.title : (conceptName + ' の出力予測'),
+      title: title,
       code_to_read: c.code_to_read
     });
   });
@@ -255,39 +322,58 @@ function actionCommitProblems_(body) {
 
   var num = Number(getConf_('last_problem_number', 30));
   var saved = [];
+
+  // 検証済みの1問を problems に積む共通処理（型は payload.type が持つ）
+  function store_(payload) {
+    var problemId = Utilities.getUuid();
+    appendRowObj_('problems', {
+      problem_id: problemId, number: payload.number, concept_id: conceptId, type: payload.type,
+      payload_json: JSON.stringify(payload), status: '未回答', created_at: nowIso_(),
+      verified: 'TRUE', source: 'capture'
+    });
+    saved.push({ problem_id: problemId, type: payload.type, payload: payload });
+  }
+
   items.slice(0, 8).forEach(function (it) {
-    if (!it || it.kind !== 'predict') return;
+    if (!it) return;
+
+    if (it.kind === 'build') {
+      // 組む（白紙で書く）：フロントが reference_solution を全テストで実行し合格を確認済み（§2）。
+      // 保存するのは仕様＋テストだけ。reference_solution は【保存しない】（§11 正解コードは出さない）
+      var fn = String(it.function_name || '');
+      var stmt = String(it.statement || '');
+      var tests = Array.isArray(it.tests) ? it.tests.filter(function (t) {
+        return t && typeof t.call === 'string' && t.call.trim() && typeof t.expected === 'string' &&
+          captureCodeAllowed_(t.call); // テスト呼び出しにも禁止要素を許さない
+      }).map(function (t) { return { call: String(t.call), expected: String(t.expected) }; }) : [];
+      if (!fn || !stmt || tests.length < 1) return;
+      num++;
+      var ex = tests[0];
+      store_({
+        number: num, title: String(it.title || concept.name), concept_id: conceptId, type: '組む',
+        statement: stmt,
+        conditions: Array.isArray(it.conditions) ? it.conditions.filter(function (x) { return typeof x === 'string'; }) : [],
+        example_call: 'print(' + ex.call + ')', expected_output: ex.expected,
+        buggy_code: null, code_to_read: null, function_name: fn, trace_vars: null,
+        blanks: null, tests: tests, theme: '基礎', is_revenge: false
+      });
+      return;
+    }
+
+    if (it.kind !== 'predict') return;
     var code = String(it.code_to_read || '');
     var expected = String(it.expected_output || '');
     // 検証ゲート（§2）：コードと「実行で得た出力」が無いものは捨てる。出力が空＝予測問題として無意味
     if (!code || !expected) return;
     if (!captureCodeAllowed_(code)) return; // サーバ側でも禁止要素を再チェック
     num++;
-    var payload = {
-      number: num,
-      title: String(it.title || concept.name),
-      concept_id: conceptId,
-      type: '予測',
+    store_({
+      number: num, title: String(it.title || concept.name), concept_id: conceptId, type: '予測',
       statement: '次のコードの出力を予測してください（読んで考える練習です）',
-      conditions: [],
-      example_call: '',
-      expected_output: expected,
-      buggy_code: null,
-      code_to_read: code,
-      function_name: null,
-      trace_vars: null,
-      blanks: null,
-      tests: null,
-      theme: '基礎',
-      is_revenge: false
-    };
-    var problemId = Utilities.getUuid();
-    appendRowObj_('problems', {
-      problem_id: problemId, number: num, concept_id: conceptId, type: '予測',
-      payload_json: JSON.stringify(payload), status: '未回答', created_at: nowIso_(),
-      verified: 'TRUE', source: 'capture'
+      conditions: [], example_call: '', expected_output: expected,
+      buggy_code: null, code_to_read: code, function_name: null, trace_vars: null,
+      blanks: null, tests: null, theme: '基礎', is_revenge: false
     });
-    saved.push({ problem_id: problemId, type: '予測', payload: payload });
   });
 
   if (!saved.length) {
@@ -340,6 +426,7 @@ if (typeof module !== 'undefined' && module.exports) {
     tokenizeConcept_: tokenizeConcept_,
     tokenOverlap_: tokenOverlap_,
     matchConcepts_: matchConcepts_,
-    validateCaptureCandidates_: validateCaptureCandidates_
+    validateCaptureCandidates_: validateCaptureCandidates_,
+    clampCount_: clampCount_
   };
 }

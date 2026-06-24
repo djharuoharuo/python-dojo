@@ -1544,10 +1544,12 @@ $('timer-overlay-ok').onclick = () => { $('timer-overlay').hidden = true; };
 //   コードはブラウザのPyodideでしか実行できないので、検証はこのフロント側が担う。
 // =====================================================================
 const capState = { conceptId: null, conceptName: '', selfExp: '', logId: null };
-// 揃えたい検証済み問題数／作り直しの最大回数。サーバの config（capture_predict_count・
-// capture_regen_retries）の既定値に合わせてある。チューニングする時は両方を合わせること
-// （フロントは config を直接読まないため）。
-const CAP_TARGET = 2;
+// 揃えたい検証済み問題数（予測＋組む）／作り直しの最大回数。サーバの config
+// （capture_predict_count・capture_build_count・capture_regen_retries）の既定値に合わせてある。
+// チューニングする時は両方を合わせること（フロントは config を直接読まないため）。
+const CAP_TARGET = 2;   // 予測（読む段）
+const CAP_BUILD = 1;    // 組む（白紙で書く段）
+const CAP_DESIRED = CAP_TARGET + CAP_BUILD;
 const CAP_MAX_RETRIES = 3;
 
 if ($('btn-capture')) $('btn-capture').onclick = openCapture;
@@ -1650,13 +1652,13 @@ async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) 
   let budgetHit = false;
   $('cap-status').hidden = false;
   try {
-    for (let attempt = 0; attempt <= CAP_MAX_RETRIES && verified.length < CAP_TARGET; attempt++) {
+    for (let attempt = 0; attempt <= CAP_MAX_RETRIES && verified.length < CAP_DESIRED; attempt++) {
       $('cap-status').textContent = '問題のたねを作っています…（Gemini）';
       let cres;
       try {
         cres = await api('captureCandidates', {
           concept_id: conceptId, concept_name: conceptName,
-          self_explanation: selfExp, predict_count: CAP_TARGET
+          self_explanation: selfExp, predict_count: CAP_TARGET, build_count: CAP_BUILD
         });
       } catch (e) {
         // 予算切れ：捕捉済み＝キューには乗っているので、問題作成だけ次回に回す（§11 グレースフル劣化）。
@@ -1665,13 +1667,10 @@ async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) 
         throw e;
       }
       const candidates = cres.candidates || [];
-      for (let i = 0; i < candidates.length && verified.length < CAP_TARGET; i++) {
-        $('cap-status').textContent = `問題を検証中…（${verified.length + 1}/${CAP_TARGET}）`;
-        const cand = candidates[i];
-        const run = await Runner.run(cand.code_to_read, (m) => { $('cap-status').textContent = m; });
-        if (acceptPredictRun(run)) {
-          verified.push({ kind: 'predict', title: cand.title, code_to_read: cand.code_to_read, expected_output: run.stdout });
-        }
+      for (let i = 0; i < candidates.length && verified.length < CAP_DESIRED; i++) {
+        $('cap-status').textContent = `問題を検証中…（${verified.length + 1}/${CAP_DESIRED}）`;
+        const v = await verifyCandidate(candidates[i]);
+        if (v) verified.push(v);
       }
     }
     if (verified.length) {
@@ -1690,11 +1689,47 @@ async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) 
   }
 }
 
-// §2 受理条件（純粋な判定）：実行が成立し・無限ループでなく・Tracebackが無く・出力が空でない
+// 候補1つを §2 検証ゲートにかけ、合格なら【保存用オブジェクト】を返す（不合格は null）。
+// 予測＝コードを実行して実stdoutを正解にする。組む＝参照解を全テストで実行し全通過を確認する。
+async function verifyCandidate(cand) {
+  if (!cand) return null;
+  if (cand.kind === 'build') return await verifyBuild(cand);
+  // 既定は予測
+  const run = await Runner.run(cand.code_to_read, (m) => { $('cap-status').textContent = m; });
+  if (!acceptPredictRun(run)) return null;
+  return { kind: 'predict', title: cand.title, code_to_read: cand.code_to_read, expected_output: run.stdout };
+}
+
+// §2 受理条件（予測）：実行が成立し・無限ループでなく・Tracebackが無く・出力が空でない
 function acceptPredictRun(run) {
   return !!run && !run.timeout && !run.error &&
     String(run.stderr || '').indexOf('Traceback') === -1 &&
     String(run.stdout || '').trim() !== '';
+}
+
+// §2 受理条件（組む）：参照解(reference_solution)を各テストで実行し、全テストが
+// Traceback無しで expected と一致したら合格。合格なら【参照解を除いた】保存用を返す（§11）。
+async function verifyBuild(cand) {
+  const tests = Array.isArray(cand.tests) ? cand.tests : [];
+  const ref = String(cand.reference_solution || '');
+  if (!ref || tests.length < 1) return null;
+  for (const t of tests) {
+    const run = await Runner.run(ref + '\nprint(' + t.call + ')', (m) => { $('cap-status').textContent = m; });
+    if (!run || run.timeout || run.error) return null;
+    if (String(run.stderr || '').indexOf('Traceback') !== -1) return null;
+    if (normalizeOut(run.stdout) !== normalizeOut(t.expected)) return null;
+  }
+  // 全テスト通過。reference_solution は保存に含めない（学習者に正解コードを見せない §11）
+  return {
+    kind: 'build', title: cand.title, statement: cand.statement,
+    function_name: cand.function_name, conditions: cand.conditions || [], tests: tests
+  };
+}
+
+// サーバの normalizedEquals_ と同じ正規化（CRLF→LF・行末空白・末尾改行を吸収）
+function normalizeOut(s) {
+  return String(s).replace(/\r\n/g, '\n').split('\n')
+    .map((line) => line.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
 }
 
 function finishCapture(conceptName, saved, note) {

@@ -94,5 +94,60 @@ t('空コード・壊れた入力は空配列', () => {
   assert.strictEqual(cap.validateCaptureCandidates_({}, 'c', 'n').length, 0);
 });
 
+// ---- validateCaptureCandidates_：組む(build)候補（§2 検証ゲートの書く段）----
+const REF = 'def total(n):\n    s = 0\n    for i in range(1, n + 1):\n        s += i\n    return s';
+t('正常なbuild候補が組むタイプで返る（参照解はフロント検証用に保持）', () => {
+  const out = cap.validateCaptureCandidates_({
+    candidates: [{
+      kind: 'build', title: '合計を作る', statement: '1からnまでの合計を返す関数を作れ',
+      function_name: 'total', conditions: ['forを使う'],
+      tests: [{ call: 'total(5)', expected: '15' }, { call: 'total(1)', expected: '1' }],
+      reference_solution: REF
+    }]
+  }, 'cap_b', '合計');
+  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out[0].kind, 'build');
+  assert.strictEqual(out[0].function_name, 'total');
+  assert.strictEqual(out[0].tests.length, 2);
+  assert.ok(out[0].reference_solution, '参照解はフロント検証用に保持される（保存はしない）');
+});
+t('reference_solutionに禁止要素があるbuildは破棄', () => {
+  const out = cap.validateCaptureCandidates_({
+    candidates: [{ kind: 'build', title: 'x', statement: 's', function_name: 'f',
+      tests: [{ call: 'f(1)', expected: '1' }], reference_solution: 'import random\ndef f(n):\n    return random.randint(1, n)' }]
+  }, 'c', 'n');
+  assert.strictEqual(out.length, 0);
+});
+t('テストの無いbuildは破棄', () => {
+  const out = cap.validateCaptureCandidates_({
+    candidates: [{ kind: 'build', title: 'x', statement: 's', function_name: 'f', tests: [], reference_solution: 'def f():\n    return 1' }]
+  }, 'c', 'n');
+  assert.strictEqual(out.length, 0);
+});
+t('test.callに禁止要素があるbuildは破棄', () => {
+  const out = cap.validateCaptureCandidates_({
+    candidates: [{ kind: 'build', title: 'x', statement: 's', function_name: 'f',
+      tests: [{ call: 'open("a")', expected: '1' }], reference_solution: 'def f(n):\n    return n' }]
+  }, 'c', 'n');
+  assert.strictEqual(out.length, 0);
+});
+t('予測とbuildの混在を両方返す', () => {
+  const out = cap.validateCaptureCandidates_({
+    candidates: [
+      { kind: 'predict', title: 'p', code_to_read: 'print(2)' },
+      { kind: 'build', title: 'b', statement: 's', function_name: 'f', tests: [{ call: 'f(1)', expected: '1' }], reference_solution: 'def f(n):\n    return n' }
+    ]
+  }, 'c', 'n');
+  assert.strictEqual(out.length, 2);
+  assert.deepStrictEqual(out.map((x) => x.kind).sort(), ['build', 'predict']);
+});
+t('clampCount_ は0〜4に丸め、不正値は既定値に戻す', () => {
+  assert.strictEqual(cap.clampCount_(2, 1), 2);
+  assert.strictEqual(cap.clampCount_(99, 1), 4);   // 上限4
+  assert.strictEqual(cap.clampCount_(0, 1), 0);    // 0は0のまま（生成しない）
+  assert.strictEqual(cap.clampCount_(-5, 1), 1);   // 負値は不正→既定値に戻す
+  assert.strictEqual(cap.clampCount_(undefined, 3), 3);
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
