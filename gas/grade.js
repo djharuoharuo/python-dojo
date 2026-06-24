@@ -273,7 +273,9 @@ function finalizeAttempt_(prow, payload, r) {
   // 間違えた問題は数日後に類題で再出題するキューへ（テスト効果 §6）。
   // revengeタブ未作成（migrate前）でも採点は止めない。
   // ※ 予測（読む段）の外しは「書く」リベンジに積まない（種別がちぐはぐになるため）
-  if (r.verdict !== '正解' && !r.isTrace) {
+  // ※ 学習キャプチャ(source=capture)の問題も積まない＝リベンジの類題は未検証generateで作られるため、
+  //   §2 検証ゲートを破ってしまう。capture概念の再出題は検証済みパイプライン（もう一度作る）に任せる
+  if (r.verdict !== '正解' && !r.isTrace && prow.source !== 'capture') {
     try { enqueueRevenge_(prow.problem_id, prow.concept_id); } catch (e) { /* 後でmigrateすれば有効に */ }
   }
 

@@ -133,7 +133,7 @@ $('notice-ok').onclick = async () => {
 };
 
 function show(screen) {
-  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history', 'screen-tools'].forEach((id) => {
+  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history', 'screen-tools', 'screen-capture'].forEach((id) => {
     $(id).hidden = (id !== screen);
   });
   window.scrollTo(0, 0);
@@ -172,6 +172,7 @@ function renderHome(data) {
   }
   showNotice(data.notice);
   renderProblemList();
+  renderCapturesShelf(data.captures); // 本で読んで捕捉した概念の棚（学習キャプチャ §1）
 }
 
 function renderProblemList() {
@@ -1535,6 +1536,272 @@ $('timer-start').onclick = () => {
 };
 $('timer-stop').onclick = stopTimer;
 $('timer-overlay-ok').onclick = () => { $('timer-overlay').hidden = true; };
+
+// =====================================================================
+// 学習キャプチャ（§1,§2）：本で読む → 捕捉 → 名寄せ → FSRS復習キュー → 検証済み問題。
+// ◆安全の要は §2：Geminiが作ったコードは【必ずPyodideで実行】して出力を確定し、
+//   実行時エラー・無限ループ・空出力のものは捨ててから保存する（未検証は出題しない）。
+//   コードはブラウザのPyodideでしか実行できないので、検証はこのフロント側が担う。
+// =====================================================================
+const capState = { conceptId: null, conceptName: '', selfExp: '', logId: null };
+// 揃えたい検証済み問題数（予測＋組む）／作り直しの最大回数。サーバの config
+// （capture_predict_count・capture_build_count・capture_regen_retries）の既定値に合わせてある。
+// チューニングする時は両方を合わせること（フロントは config を直接読まないため）。
+const CAP_TARGET = 2;   // 予測（読む段）
+const CAP_BUILD = 1;    // 組む（白紙で書く段）
+const CAP_DESIRED = CAP_TARGET + CAP_BUILD;
+const CAP_MAX_RETRIES = 3;
+
+if ($('btn-capture')) $('btn-capture').onclick = openCapture;
+if ($('btn-capture-back')) $('btn-capture-back').onclick = () => loadHome();
+if ($('btn-cap-submit')) $('btn-cap-submit').onclick = submitCapture;
+
+function openCapture() {
+  capState.conceptId = null;
+  capState.logId = null;
+  $('cap-name').value = '';
+  $('cap-exp').value = '';
+  $('cap-src').value = '';
+  $('cap-match').hidden = true;
+  $('cap-match').innerHTML = '';
+  $('cap-status').hidden = true;
+  $('cap-result').hidden = true;
+  $('cap-result').innerHTML = '';
+  $('capture-form').hidden = false;
+  $('btn-cap-submit').disabled = false;
+  show('screen-capture');
+}
+
+// 入力 → 名寄せ候補を取得（LLM不使用・読み取りのみ §5）
+async function submitCapture() {
+  const name = $('cap-name').value.trim();
+  if (!name) { showError('学んだ概念の名前を入れてください'); return; }
+  capState.conceptName = name;
+  capState.selfExp = $('cap-exp').value.trim();
+  $('btn-cap-submit').disabled = true;
+  $('cap-status').hidden = false;
+  $('cap-status').textContent = '近い概念を探しています…';
+  try {
+    const res = await api('captureMatch', { concept_name: name });
+    renderMatch(res.matches || [], res.suggest || 'new');
+  } catch (e) {
+    showError(e.message);
+    $('btn-cap-submit').disabled = false;
+  } finally {
+    $('cap-status').hidden = true;
+  }
+}
+
+// 「既存に紐づける / 新規作成」を1タップで選ばせる（§5 二重登録を防ぐ。決めるのは本人）
+function renderMatch(matches, suggest) {
+  const box = $('cap-match');
+  box.innerHTML = '';
+  const h = document.createElement('div');
+  h.className = 'cap-match-head';
+  h.textContent = matches.length
+    ? 'この概念はどれ？（同じものを別名で二重登録しないため）'
+    : '新しい概念として登録します。';
+  box.appendChild(h);
+  matches.forEach((m) => {
+    const b = document.createElement('button');
+    b.className = 'btn-ghost cap-choice';
+    b.innerHTML = `既存の「${escapeHtml(m.name)}」に紐づける <span class="chip">${escapeHtml(m.state)}</span>`;
+    b.onclick = () => confirmCapture({ mode: 'existing', concept_id: m.concept_id });
+    box.appendChild(b);
+  });
+  const nb = document.createElement('button');
+  nb.className = (suggest === 'new' ? 'btn-primary' : 'btn-ghost') + ' cap-choice';
+  nb.textContent = `「${capState.conceptName}」を新しい概念として登録`;
+  nb.onclick = () => confirmCapture({ mode: 'new' });
+  box.appendChild(nb);
+  box.hidden = false;
+}
+
+// Phase A：概念をFSRS復習キューに登録（ここまでで配線は完成）→ Phase B：検証済み問題を作る
+async function confirmCapture(attach) {
+  $('cap-match').hidden = true;
+  $('capture-form').hidden = true;
+  $('cap-status').hidden = false;
+  $('cap-status').textContent = '復習キューに登録中…';
+  try {
+    const res = await api('capture', {
+      concept_name: capState.conceptName,
+      self_explanation: capState.selfExp,
+      source_ref: $('cap-src').value.trim(),
+      raw_text: capState.conceptName + (capState.selfExp ? '：' + capState.selfExp : ''),
+      attach: attach
+    });
+    capState.conceptId = res.concept_id;
+    capState.conceptName = res.concept_name || capState.conceptName;
+    capState.logId = res.log_id || null;
+  } catch (e) {
+    $('cap-status').hidden = true;
+    showError(e.message);
+    $('capture-form').hidden = false;
+    $('btn-cap-submit').disabled = false;
+    return;
+  }
+  // Phase A 完了：概念は復習キューに乗った。以降の問題生成が失敗しても捕捉は無効化しない（§11）
+  await generateVerifiedProblems(capState.conceptId, capState.conceptName, capState.selfExp, capState.logId);
+}
+
+// §2 検証ゲート：Gemini候補 → Pyodideで実行 → 出力を確定/破棄 → 検証済みだけ保存。
+// 出力が取れた（タイムアウト無し・Traceback無し・空でない）ものだけ採用し、実stdoutを正解にする。
+async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) {
+  const verified = [];
+  let budgetHit = false;
+  $('cap-status').hidden = false;
+  try {
+    for (let attempt = 0; attempt <= CAP_MAX_RETRIES && verified.length < CAP_DESIRED; attempt++) {
+      $('cap-status').textContent = '問題のたねを作っています…（Gemini）';
+      let cres;
+      try {
+        cres = await api('captureCandidates', {
+          concept_id: conceptId, concept_name: conceptName,
+          self_explanation: selfExp, predict_count: CAP_TARGET, build_count: CAP_BUILD
+        });
+      } catch (e) {
+        // 予算切れ：捕捉済み＝キューには乗っているので、問題作成だけ次回に回す（§11 グレースフル劣化）。
+        // それまでに検証できた分は下で保存する（捨てない）
+        if (e.kind === 'budget') { budgetHit = true; break; }
+        throw e;
+      }
+      const candidates = cres.candidates || [];
+      for (let i = 0; i < candidates.length && verified.length < CAP_DESIRED; i++) {
+        $('cap-status').textContent = `問題を検証中…（${verified.length + 1}/${CAP_DESIRED}）`;
+        const v = await verifyCandidate(candidates[i]);
+        if (v) verified.push(v);
+      }
+    }
+    if (verified.length) {
+      $('cap-status').textContent = '保存中…';
+      const commit = await api('commitProblems', { concept_id: conceptId, log_id: logId, problems: verified });
+      finishCapture(conceptName, commit.saved || [],
+        budgetHit ? '本日のLLM上限のため、用意できた分だけ保存しました（続きは次回）' : '');
+    } else {
+      finishCapture(conceptName, [], budgetHit
+        ? '本日のLLM上限に達したため、問題作成は次回に回します（概念は復習キューに登録済みです）'
+        : '今回は検証を通る問題が作れませんでした（概念は復習キューに登録済みです）。あとで棚の「もう一度作る」で再挑戦できます');
+    }
+  } catch (e) {
+    $('cap-status').hidden = true;
+    showError(e.message);
+  }
+}
+
+// 候補1つを §2 検証ゲートにかけ、合格なら【保存用オブジェクト】を返す（不合格は null）。
+// 予測＝コードを実行して実stdoutを正解にする。組む＝参照解を全テストで実行し全通過を確認する。
+async function verifyCandidate(cand) {
+  if (!cand) return null;
+  if (cand.kind === 'build') return await verifyBuild(cand);
+  // 既定は予測
+  const run = await Runner.run(cand.code_to_read, (m) => { $('cap-status').textContent = m; });
+  if (!acceptPredictRun(run)) return null;
+  return { kind: 'predict', title: cand.title, code_to_read: cand.code_to_read, expected_output: run.stdout };
+}
+
+// §2 受理条件（予測）：実行が成立し・無限ループでなく・Tracebackが無く・出力が空でない
+function acceptPredictRun(run) {
+  return !!run && !run.timeout && !run.error &&
+    String(run.stderr || '').indexOf('Traceback') === -1 &&
+    String(run.stdout || '').trim() !== '';
+}
+
+// §2 受理条件（組む）：参照解(reference_solution)を各テストで実行し、全テストが
+// Traceback無しで expected と一致したら合格。合格なら【参照解を除いた】保存用を返す（§11）。
+async function verifyBuild(cand) {
+  const tests = Array.isArray(cand.tests) ? cand.tests : [];
+  const ref = String(cand.reference_solution || '');
+  if (!ref || tests.length < 1) return null;
+  for (const t of tests) {
+    const run = await Runner.run(ref + '\nprint(' + t.call + ')', (m) => { $('cap-status').textContent = m; });
+    if (!run || run.timeout || run.error) return null;
+    if (String(run.stderr || '').indexOf('Traceback') !== -1) return null;
+    if (normalizeOut(run.stdout) !== normalizeOut(t.expected)) return null;
+  }
+  // 全テスト通過。reference_solution は保存に含めない（学習者に正解コードを見せない §11）
+  return {
+    kind: 'build', title: cand.title, statement: cand.statement,
+    function_name: cand.function_name, conditions: cand.conditions || [], tests: tests
+  };
+}
+
+// サーバの normalizedEquals_ と同じ正規化（CRLF→LF・行末空白・末尾改行を吸収）
+function normalizeOut(s) {
+  return String(s).replace(/\r\n/g, '\n').split('\n')
+    .map((line) => line.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+}
+
+function finishCapture(conceptName, saved, note) {
+  $('cap-status').hidden = true;
+  const box = $('cap-result');
+  box.innerHTML = '';
+  const ok = document.createElement('div');
+  ok.className = 'cap-ok';
+  ok.innerHTML = `✅ 「${escapeHtml(conceptName)}」を復習キューに追加しました` +
+    (saved.length ? `（検証済みの問題を${saved.length}問用意）` : '');
+  box.appendChild(ok);
+  if (note) {
+    const n = document.createElement('div');
+    n.className = 'cap-note';
+    n.textContent = note;
+    box.appendChild(n);
+  }
+  if (saved.length) {
+    const solve = document.createElement('button');
+    solve.className = 'btn-primary';
+    solve.textContent = '今すぐ1問解く';
+    solve.onclick = () => openProblem(saved[0]);
+    box.appendChild(solve);
+  }
+  const more = document.createElement('button');
+  more.className = 'btn-ghost';
+  more.textContent = 'もう1つ捕捉する';
+  more.onclick = openCapture;
+  box.appendChild(more);
+  const home = document.createElement('button');
+  home.className = 'btn-ghost';
+  home.textContent = 'ホームへ';
+  home.onclick = () => loadHome();
+  box.appendChild(home);
+  box.hidden = false;
+}
+
+// ホーム下部「捕捉した概念の棚」：残り問題数を表示。残り0かつdue到来は「もう一度作る」（§6 recurrence）
+function renderCapturesShelf(captures) {
+  const box = $('captures-shelf');
+  if (!box) return;
+  box.innerHTML = '';
+  if (!captures || !captures.length) return;
+  const h = document.createElement('div');
+  h.className = 'shelf-head';
+  h.textContent = '📚 捕捉した概念';
+  box.appendChild(h);
+  captures.forEach((c) => {
+    const row = document.createElement('div');
+    row.className = 'shelf-row';
+    const label = document.createElement('span');
+    label.textContent = `${c.name}（残り${c.pending}問）`;
+    row.appendChild(label);
+    if (c.pending === 0 && c.due_now) {
+      const b = document.createElement('button');
+      b.className = 'btn-small';
+      b.textContent = '🔁 もう一度作る';
+      b.onclick = () => {
+        capState.conceptName = c.name;
+        capState.selfExp = '';
+        capState.logId = null;
+        show('screen-capture');
+        $('capture-form').hidden = true;
+        $('cap-match').hidden = true;
+        $('cap-result').hidden = true;
+        generateVerifiedProblems(c.concept_id, c.name, '', null);
+      };
+      row.appendChild(b);
+    }
+    box.appendChild(row);
+  });
+}
 
 // ---------------------------------------------------------------------
 // 起動

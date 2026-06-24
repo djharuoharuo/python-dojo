@@ -35,6 +35,9 @@ function pickDueRevenges_(max) {
     // 元問題が見つからない場合もキューからは外す（情報を残しても出題できないため）
     updateRowWhere_('revenge', 'problem_id', due[i].problem_id, { status: '出題済' });
     if (!orig) continue;
+    // 学習キャプチャの問題はリベンジ（未検証の類題生成）に乗せない＝§2 検証ゲートを守る
+    // （通常は grade 側で積まれないが、過去データ保険としてここでも弾く）
+    if (orig.source === 'capture') continue;
     var payload;
     try { payload = JSON.parse(orig.payload_json); } catch (e) { continue; }
     picked.push({ concept_id: due[i].concept_id, source: payload });

@@ -69,6 +69,9 @@
     <div id="home-loading" class="loading">読み込み中…</div>
     <button id="btn-history" class="btn-ghost">📖 これまでの履歴を見る</button>
     <button id="btn-tools" class="btn-ghost">🎁 解放ツール（習得で増える道具）</button>
+    <!-- 学習キャプチャ：本で読んだ概念を捕捉してFSRS復習キューに乗せる（§1） -->
+    <button id="btn-capture" class="btn-ghost">📚 今日学んだことを捕捉（本で読んだら）</button>
+    <div id="captures-shelf" class="captures-shelf"></div>
   </section>
 
   <!-- 解放ツール画面（アイデンティティ報酬 §11） -->
@@ -79,6 +82,32 @@
     </header>
     <p class="progress">習得した概念に応じて、実際に使えるPythonツールが解放されます。コピーして自分の用途に改造しよう。</p>
     <div id="tools-list"></div>
+  </section>
+
+  <!-- 学習キャプチャ画面（本で読む→捕捉→FSRS復習キュー→検証済み問題 §1,§2） -->
+  <section id="screen-capture" hidden>
+    <header class="problem-header">
+      <button id="btn-capture-back" class="btn-small">← ホーム</button>
+      <span class="screen-title">📚 今日学んだこと</span>
+    </header>
+    <p class="progress">本で新しいことを読んだら、ここに書いて「復習キュー」に乗せます。あとで間隔をあけて出題され、長期記憶に定着します（一度きりで終わりにせず、くり返し出ます）。</p>
+
+    <div id="capture-form">
+      <label class="cap-label" for="cap-name">学んだ概念の名前</label>
+      <input type="text" id="cap-name" maxlength="60" autocapitalize="off" autocorrect="off" autocomplete="off"
+        placeholder="例: ローカル/グローバルスコープ">
+      <label class="cap-label" for="cap-exp">ひとこと（自分の言葉で。書くだけで定着します）</label>
+      <textarea id="cap-exp" rows="3" maxlength="400" spellcheck="false" autocapitalize="off" autocorrect="off"
+        placeholder="例: 関数の中で作った変数は外から見えない。外の変数を書き換えるには global が要る"></textarea>
+      <label class="cap-label" for="cap-src">出典（任意・本や章）</label>
+      <input type="text" id="cap-src" maxlength="120" autocapitalize="off" autocorrect="off" autocomplete="off"
+        placeholder="例: みんなのPython 第7章">
+      <button id="btn-cap-submit" class="btn-primary">この概念を復習キューに入れる</button>
+    </div>
+
+    <div id="cap-match" class="cap-match" hidden></div>
+    <div id="cap-status" class="loading" hidden></div>
+    <div id="cap-result" class="cap-result" hidden></div>
   </section>
 
   <!-- 履歴画面（過去問・自分の解答・した質問を見返す） -->

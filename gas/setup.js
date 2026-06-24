@@ -37,6 +37,7 @@ function setup() {
 // ---------------------------------------------------------------------
 function migrate() {
   ensureTabs_();
+  ensureConfigDefaults_(); // 後から増えた config キー（capture_* 等）を既存シートに足す（既存値は上書きしない）
   Logger.log('migrate 完了');
 }
 
@@ -167,9 +168,10 @@ function seedMistakes_() {
   });
 }
 
-// §4 config 既定値
-function seedConfig_() {
-  var conf = [
+// §4 config 既定値（seedConfig_ と ensureConfigDefaults_ の唯一の正）。
+// 新しいキーを足したら、migrate() の ensureConfigDefaults_ が既存シートにも安全に追加する。
+function configDefaults_() {
+  return [
     ['last_problem_number', 30], // 旧Notion問題集の㉚まで使用済み。本アプリは31から
     ['daily_count', 3],
     // 題材は超初心者向けに再調整：Notionで実際にできていた「素朴な数の問題（基礎）」を主軸に。
@@ -211,9 +213,39 @@ function seedConfig_() {
     ['stage0_enabled', 'TRUE'],
     ['llm_budget_date', ''],
     ['llm_budget_used', 0],
-    ['streak_freeze_used_week', ''] // Phase 2 用
+    ['streak_freeze_used_week', ''], // Phase 2 用
+    // --- 学習キャプチャ（本で読んだ概念→FSRS復習キュー→検証済み問題 §1,§2）---
+    // ONで「今日学んだこと」入口が出る。OFFにすれば機能ごと止まる
+    ['capture_enabled', 'TRUE'],
+    // 1概念につき作る問題数。予測（Stage1: 読む/出力予測）と組む（Stage3-4: 白紙で書く）の内訳。
+    // どちらも §2 の検証ゲート（Pyodideで実行→正解確定）を通ったものだけ採用する
+    ['capture_predict_count', 2],
+    ['capture_build_count', 1],
+    // 検証で落ちた（実行時エラー/テスト不通過）候補を作り直す最大回数（§2: 破棄→再生成→スキップ）
+    ['capture_regen_retries', 3],
+    // 「今すぐ解く」で読んだ直後に出す問題数（§6: test-enhanced learning は補助）
+    ['capture_immediate_count', 1]
   ];
-  conf.forEach(function (c) {
+}
+
+// §4 config 既定値を投入（setup / reseed 用。全キーを書く）
+function seedConfig_() {
+  configDefaults_().forEach(function (c) {
     appendRowObj_('config', { key: c[0], value: c[1] });
   });
+}
+
+// 既存の config に「まだ無いキーだけ」を既定値で足す（migrate 用）。既存値は絶対に上書きしない。
+// 新機能で config キーが増えても、GASエディタで migrate() を1回流せば既存シートに反映される。
+function ensureConfigDefaults_() {
+  var existing = {};
+  readRows_('config').forEach(function (r) { existing[r.key] = true; });
+  var added = [];
+  configDefaults_().forEach(function (c) {
+    if (!existing[c[0]]) {
+      appendRowObj_('config', { key: c[0], value: c[1] });
+      added.push(c[0]);
+    }
+  });
+  if (added.length) Logger.log('config キーを追加しました: ' + added.join(', '));
 }
