@@ -269,7 +269,13 @@ function renderHistory(items) {
         stat +
         (canRetry ? `<button class="btn-small hist-retry">🔁 この問題にもう一度挑戦</button>` : '') +
         (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
+        // 予測/読む段は「問題のコード」と「正しい出力」が問題そのもの。履歴でも必ず見せる
+        // （これが無いと『問題が載っていないのに解答だけ』になってしまう）
+        (it.payload && it.payload.code_to_read
+          ? `<div class="expl-label">問題のコード</div><pre>${escapeHtml(it.payload.code_to_read)}</pre>` : '') +
         `<div class="expl-label">自分の解答</div><pre>${escapeHtml(it.code || '(なし)')}</pre>` +
+        (it.payload && it.payload.code_to_read && it.payload.expected_output
+          ? `<div class="expl-label">正しい出力</div><pre>${escapeHtml(it.payload.expected_output)}</pre>` : '') +
         historyFeedbackHtml(it) +
         (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
         (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
