@@ -37,6 +37,9 @@ function actionGetHistory_(body) {
     var feedback = {};
     try { feedback = JSON.parse(a.feedback_json || '{}') || {}; } catch (e) { feedback = {}; }
     var stat = statByProblem[a.problem_id] || { tries: 0, corrects: 0 };
+    // [▶実行]の試行ログ（正解前の試行錯誤。古い記録には無いので空配列に倒す）
+    var runs = [];
+    try { runs = JSON.parse(a.runs_json || '[]'); if (!Array.isArray(runs)) runs = []; } catch (e) { runs = []; }
     return {
       problem_id: a.problem_id,    // 再挑戦で同じ問題を開き直すのに使う
       timestamp: a.timestamp,
@@ -54,6 +57,7 @@ function actionGetHistory_(body) {
       stdout: a.stdout,
       hints: Array.isArray(feedback.hints) ? feedback.hints : [],
       explanation: feedback.explanation || null,
+      runs: runs, // [▶実行]の試行ログ（履歴で「どう間違えてどう直したか」を見せる）
       asks: asksByProblem[a.problem_id] || [],
       // この問題の通算成績（再挑戦も含む）。フロントが「n挑戦/m正解」を表示する
       tries: stat.tries,
