@@ -28,6 +28,10 @@ function actionGrade_(body) {
   if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
   var payload = JSON.parse(prow.payload_json);
 
+  // [▶実行] の試行ログ（コード・出力・エラー）。採点で消える「正解前の試行錯誤」を残す。
+  // editorで書く問題（新規/復習/デバッグ/ノーヒント/組む）でフロントから送られてくる
+  var runs = sanitizeRuns_(body.runs);
+
   // --- Stage1: 予測（トレース）。正誤は「予測した出力」と「実際の出力(Pyodide実行)」の一致で決める。
   // LLMは使わない（Pyodideが正解の出力をくれる）。書く力の前段を低負荷で鍛える（§スキルラダー） ---
   if (payload.type === '予測') {
@@ -97,7 +101,7 @@ function actionGrade_(body) {
       code: code, stdout: outs.join('\n'), stderr: errs.join('\n'),
       verdict: allPass ? '正解' : '不正解', hintUsed: hintUsed, easy: easy,
       errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints,
-      suggestion: '', practice: practice
+      suggestion: '', practice: practice, runs: runs
     });
     buildRes.tests_passed = passed; // UIが各テストの合否を出す（正解コードは出さない）
     buildRes.tests_total = tests.length;
@@ -169,7 +173,7 @@ function actionGrade_(body) {
       code: code, stdout: stdout, stderr: stderr,
       verdict: '正解', hintUsed: hintUsed, easy: easy,
       errorPattern: 'なし', explanation: null, modelUsed: '', hints: hints,
-      suggestion: suggestion, practice: practice
+      suggestion: suggestion, practice: practice, runs: runs
     });
   }
 
@@ -201,7 +205,22 @@ function actionGrade_(body) {
     code: code, stdout: stdout, stderr: stderr,
     verdict: verdict, hintUsed: hintUsed, easy: false,
     errorPattern: explanation ? explanation.error_pattern : 'その他',
-    explanation: explanation, modelUsed: modelUsed, hints: hints, practice: practice
+    explanation: explanation, modelUsed: modelUsed, hints: hints, practice: practice, runs: runs
+  });
+}
+
+// フロントから来た [▶実行] 試行ログを安全に整える（直近15件・各フィールドを上限つきで保持）。
+// 巨大化や壊れた入力でシートを汚さないためのガード（§9 クライアント入力は検証してから保存）
+function sanitizeRuns_(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(-15).map(function (r) {
+    r = r || {};
+    return {
+      code: String(r.code || '').slice(0, 5000),
+      stdout: String(r.stdout || '').slice(0, 3000),
+      stderr: String(r.stderr || '').slice(0, 3000),
+      at: String(r.at || '').slice(0, 30)
+    };
   });
 }
 
@@ -236,7 +255,9 @@ function finalizeAttempt_(prow, payload, r) {
     model_used: r.modelUsed,
     // もらったヒントとフル解説を履歴用に保存（後から振り返れるように §5）
     feedback_json: JSON.stringify({ hints: r.hints || [], explanation: r.explanation || null }),
-    mode: r.practice ? '練習' : '本番'
+    mode: r.practice ? '練習' : '本番',
+    // [▶実行]の試行ログ（正解前の試行錯誤）。履歴で「どう間違えてどう直したか」を残す
+    runs_json: JSON.stringify(r.runs || [])
   });
 
   // 過去問の「再挑戦」（練習モード）は、履歴とストリークにだけ残す。

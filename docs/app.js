@@ -43,6 +43,7 @@ function saveDraft(showStatus) {
       hints: state.hints,
       hintLevel: state.hintLevel,
       asks: state.asks,
+      runs: state.runs,        // [▶実行]の試行ログ（同端末で続きから戻れる）
       hintUsed: state.hintUsed,
       savedAt: Date.now()      // どちらが新しいか比較するため（PC↔スマホ）
     }));
@@ -277,6 +278,7 @@ function renderHistory(items) {
         (it.payload && it.payload.code_to_read && it.payload.expected_output
           ? `<div class="expl-label">正しい出力</div><pre>${escapeHtml(it.payload.expected_output)}</pre>` : '') +
         historyFeedbackHtml(it) +
+        historyRunsHtml(it) + // [▶実行]の試行錯誤（エラー→修正の過程）を畳んで見せる
         (it.self_note ? `<div class="expl-label">原因メモ</div><p>${escapeHtml(it.self_note)}</p>` : '') +
         (asks ? `<div class="expl-label">先生にした質問</div>${asks}` : '') +
       `</div>`;
@@ -295,6 +297,25 @@ function rechallenge(it) {
     return;
   }
   openProblem({ problem_id: it.problem_id, type: it.type, payload: it.payload }, { practice: true });
+}
+
+// 履歴の1件の「[▶実行]の試行ログ」を畳んで組み立てる（正解前の試行錯誤＝どう間違えてどう直したか）。
+// 古い記録には無いので空。1回だけの実行（＝最終解答そのまま）なら省いて冗長さを避ける
+function historyRunsHtml(it) {
+  const runs = Array.isArray(it.runs) ? it.runs : [];
+  if (runs.length < 1) return '';
+  const hasError = runs.some((r) => (r.stderr || '').trim() !== '');
+  // 1回しか実行しておらず、エラーも無いなら「自分の解答」と重複するだけなので出さない
+  if (runs.length === 1 && !hasError) return '';
+  const blocks = runs.map((r, i) => {
+    const err = (r.stderr || '').trim();
+    const result = err
+      ? `<div class="hist-run-err">⚠️ ${escapeHtml(err)}</div>`
+      : `<pre class="hist-run-out">${escapeHtml((r.stdout || '').trim() || '(出力なし)')}</pre>`;
+    return `<div class="hist-run"><div class="hist-run-no">試行 ${i + 1}${err ? '（エラー）' : ''}</div>` +
+      `<pre>${escapeHtml(r.code || '')}</pre>${result}</div>`;
+  }).join('');
+  return `<details class="hist-runs"><summary>🛠 試した実行（${runs.length}回）— どう直したか</summary>${blocks}</details>`;
 }
 
 // 履歴の1件にもらったヒント・Geminiの解説（間違えた時）を組み立てる。
@@ -418,6 +439,7 @@ function openProblem(p, opts) {
   state.asks = [];
   state.attemptId = null;
   state.lastRun = { stdout: '', stderr: '' };
+  state.runs = []; // この問題で[▶実行]した試行ログ（コード・出力・エラー）。採点時に履歴へ保存する
 
   const pl = p.payload;
   $('problem-title').textContent = `${pl.number}. ${pl.title}`;
@@ -562,6 +584,7 @@ function openProblem(p, opts) {
     if (Array.isArray(draft.asks)) {
       draft.asks.forEach((a) => { state.asks.push(a); renderAsk(a.question, a.answer, false); });
     }
+    if (Array.isArray(draft.runs)) state.runs = draft.runs.slice(); // 試行ログを引き継ぐ
     if (draft.hintUsed) markHintUsed();
   }
   show('screen-problem');
@@ -599,6 +622,15 @@ $('btn-run').onclick = async () => {
   const result = await Runner.run(code, (msg) => { $('run-status').textContent = msg; });
   $('btn-run').disabled = false;
   $('run-status').hidden = true;
+
+  // この[▶実行]を試行ログに残す（エラーもセットで）。採点で消える「正解前の試行錯誤」を
+  // 履歴に残すため。タイムアウト・起動失敗も記録する（直近15件まで）
+  const recStderr = result.timeout
+    ? 'TimeoutError: 5秒以内に終了しませんでした'
+    : (result.error && result.stdout === undefined) ? String(result.error) : (result.stderr || '');
+  state.runs.push({ code: code, stdout: result.stdout || '', stderr: recStderr, at: new Date().toISOString() });
+  if (state.runs.length > 15) state.runs.shift();
+  saveDraft(false); // 試行ログも下書きに含めて残す（同端末で続きから戻れる）
 
   if (result.error && result.stdout === undefined) {
     // タイムアウト・input()検知・起動失敗
@@ -651,6 +683,7 @@ async function gradeBuild() {
       test_errors: errs,
       hint_used: state.hintUsed,
       hints: state.hints,
+      runs: state.runs,             // [▶実行]の試行ログ（正解前の試行錯誤）を履歴に残す
       stage: 'full',
       mode: state.practice ? 'practice' : 'normal'
     });
@@ -1172,6 +1205,7 @@ async function grade(stage) {
       stage: stage,
       hint_used: state.hintUsed,
       hints: state.hints,           // もらったヒントを履歴に残すため一緒に送る
+      runs: state.runs,             // [▶実行]の試行ログ（正解前の試行錯誤）を履歴に残す
       easy: $('easy-check').checked,
       mode: state.practice ? 'practice' : 'normal' // 再挑戦は練習として記録（学習計画に混ぜない）
     });
