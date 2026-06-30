@@ -71,6 +71,8 @@
     <button id="btn-tools" class="btn-ghost">🎁 解放ツール（習得で増える道具）</button>
     <!-- 学習キャプチャ：本で読んだ概念を捕捉してFSRS復習キューに乗せる（§1） -->
     <button id="btn-capture" class="btn-ghost">📚 今日学んだことを捕捉（本で読んだら）</button>
+    <!-- ゼロトラスト道場：人生目標（NIST SP 800-207 完全理解→就職→年収）の北極星 -->
+    <button id="btn-zt-dojo" class="btn-ghost">🛡 ゼロトラスト道場（NIST SP 800-207 への道）</button>
     <div id="captures-shelf" class="captures-shelf"></div>
   </section>
 
@@ -109,6 +111,16 @@
     <div id="cap-match" class="cap-match" hidden></div>
     <div id="cap-status" class="loading" hidden></div>
     <div id="cap-result" class="cap-result" hidden></div>
+  </section>
+
+  <!-- 🛡 ゼロトラスト道場（NIST SP 800-207 への道。学ぶ／思い出す／進路） -->
+  <section id="screen-zt" hidden>
+    <header class="problem-header">
+      <button id="btn-zt-back" class="btn-small">← ホーム</button>
+      <span class="screen-title">🛡 ゼロトラスト道場</span>
+    </header>
+    <div id="zt-tabs" class="zt-tabs"></div>
+    <div id="zt-body"></div>
   </section>
 
   <!-- 履歴画面（過去問・自分の解答・した質問を見返す） -->
@@ -259,6 +271,7 @@
   <script src="api.js"></script>
   <script src="runner.js"></script>
   <script src="tools.js"></script>
+  <script src="zt.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

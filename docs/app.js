@@ -137,7 +137,7 @@ $('notice-ok').onclick = async () => {
 };
 
 function show(screen) {
-  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history', 'screen-tools', 'screen-capture'].forEach((id) => {
+  ['screen-home', 'screen-problem', 'screen-summary', 'screen-history', 'screen-tools', 'screen-capture', 'screen-zt'].forEach((id) => {
     $(id).hidden = (id !== screen);
   });
   window.scrollTo(0, 0);
@@ -1598,6 +1598,9 @@ const CAP_MAX_RETRIES = 3;
 
 if ($('btn-capture')) $('btn-capture').onclick = openCapture;
 if ($('btn-capture-back')) $('btn-capture-back').onclick = () => loadHome();
+// 🛡 ゼロトラスト道場（NIST SP 800-207 への道）。zt.js が自己完結で画面を描く
+if ($('btn-zt-dojo')) $('btn-zt-dojo').onclick = () => ZTDojo.open();
+if ($('btn-zt-back')) $('btn-zt-back').onclick = () => loadHome();
 if ($('btn-cap-submit')) $('btn-cap-submit').onclick = submitCapture;
 
 function openCapture() {
