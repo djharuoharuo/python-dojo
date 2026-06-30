@@ -678,3 +678,26 @@ button:disabled { opacity: 0.35; }
 .hist-run-no { color: var(--muted); font-size: 0.82rem; margin-bottom: 2px; }
 .hist-run-err { color: var(--danger); white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; }
 .hist-run-out { color: var(--text); }
+
+/* ---- 🛡 ゼロトラスト道場（NIST SP 800-207） ---- */
+.zt-tabs { display: flex; gap: 6px; margin: 10px 0 14px; }
+.zt-tab { flex: 1; background: var(--panel); color: var(--muted); border: 1px solid #2b3040;
+  border-radius: var(--radius); padding: 8px 6px; font-size: 0.92rem; }
+.zt-tab.active { background: var(--panel2); color: var(--accent); border-color: var(--accent); font-weight: bold; }
+.zt-intro { background: var(--panel); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px; }
+.zt-intro h3 { margin: 0 0 6px; color: var(--accent); }
+.zt-src { color: var(--muted); font-size: 0.78rem; }
+.zt-sec { background: var(--panel); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 8px; }
+.zt-sec > summary { font-weight: bold; cursor: pointer; padding: 4px 0; }
+.zt-note { color: var(--muted); font-size: 0.88rem; }
+.zt-card { background: var(--panel2); border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.zt-q { font-weight: bold; color: var(--text); margin-bottom: 4px; }
+.zt-a { color: var(--text); }
+.zt-py { margin-top: 6px; color: var(--accent); font-size: 0.9rem; }
+.zt-pay { color: var(--accent2); font-size: 0.85rem; }
+.zt-quiz-head, .zt-grade-q { color: var(--muted); margin: 8px 0; }
+.zt-quiz-card { text-align: center; }
+.zt-q-sec { color: var(--muted); font-size: 0.8rem; }
+.zt-q-big { font-size: 1.15rem; font-weight: bold; margin: 10px 0 14px; }
+.zt-grade { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+.zt-done { text-align: center; color: var(--accent); padding: 24px 12px; }
