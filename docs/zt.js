@@ -134,6 +134,115 @@ const ZT_CAREER = {
     '世界のサイバー人材不足は約480万人（ISC2 2025）＝追い風。'
 };
 
+// =====================================================================
+// 🛠 ゼロトラスト・コード演習（本命）。「ゼロトラストを取り入れたコードを書ける」になるための階段。
+// 一段ずつ自分でPythonを書き、ブラウザのPyodideでテスト判定する（答えは見せない＝§11）。
+// 全課題は python3 で実行検証済み（間違った課題を出さないため）。最後はミニ・ゼロトラストゲート。
+// 各 tests の expected は判定用（UIには表示しない）。reference solution は同梱しない。
+// =====================================================================
+const ZT_CODING = [
+  {
+    id: 'gate', title: '① deny-by-default ゲート', tenet: '原則6・fail closed',
+    spec: '正しいトークンの時だけ「許可」、それ以外は全部「拒否」を返す関数 gate(token) を書こう。' +
+      '「既定は拒否（deny-by-default）」がゼロトラストの基本。正しいトークンは "secret123"。',
+    function_name: 'gate',
+    conditions: ['関数名は gate', '正しいトークン "secret123" のとき "許可" を返す', 'それ以外（空文字・誤り）は全部 "拒否"'],
+    starter: 'def gate(token):\n    ',
+    tests: [{ call: 'gate("secret123")', expected: '許可' }, { call: 'gate("wrong")', expected: '拒否' }, { call: 'gate("")', expected: '拒否' }],
+    hint: 'if で正しいトークンの時だけ "許可" を return。関数の最後に return "拒否" を置くと、それ以外は全部拒否になる（deny-by-default）。'
+  },
+  {
+    id: 'safe_gate', title: '② fail-closed（エラーでも拒否）', tenet: '原則6・fail closed',
+    spec: '処理中にエラーが起きても【必ず "拒否"】を返す安全な門番 safe_gate(token) を書こう。' +
+      'token を小文字にして "open" なら "許可"、それ以外は "拒否"。ただし token が文字列でない等で例外が出ても "拒否" にする（迷ったら閉じる）。',
+    function_name: 'safe_gate',
+    conditions: ['関数名は safe_gate', 'token.lower() が "open" なら "許可"', '例外が起きたら "拒否"（try/except）'],
+    starter: 'def safe_gate(token):\n    ',
+    tests: [{ call: 'safe_gate("OPEN")', expected: '許可' }, { call: 'safe_gate("nope")', expected: '拒否' }, { call: 'safe_gate(None)', expected: '拒否' }],
+    hint: 'try: の中で token.lower() を使う。None だと .lower() で例外＝except Exception: で "拒否" を返す。'
+  },
+  {
+    id: 'can', title: '③ ポリシーエンジン(PE)・最小権限', tenet: '原則4・最小権限',
+    spec: '許可リスト（辞書）に基づき、user が action をしてよいか True/False を返す can(user, action, policy) を書こう。' +
+      'policy は {"haruki": ["read","write"]} のような辞書。リストに無い／ユーザーが居なければ False（最小権限）。',
+    function_name: 'can',
+    conditions: ['関数名は can', 'policy[user] のリストに action があれば True', 'ユーザーが居ない時も False（落ちない）'],
+    starter: 'def can(user, action, policy):\n    ',
+    tests: [
+      { call: 'can("haruki","read",{"haruki":["read","write"]})', expected: 'True' },
+      { call: 'can("haruki","delete",{"haruki":["read","write"]})', expected: 'False' },
+      { call: 'can("guest","read",{"haruki":["read"]})', expected: 'False' }
+    ],
+    hint: 'policy.get(user, []) で「居なければ空リスト」を取り出し、action in … を返すと1行で書ける。'
+  },
+  {
+    id: 'verify', title: '④ 毎リクエスト検証', tenet: '原則3・6',
+    spec: 'リクエスト辞書 req = {"token","user","action"} を1件検証する verify(req, policy) を書こう。' +
+      'トークンが "t-"＋user と一致し、かつ policy で user が action 可能なら "許可"、どちらか欠ければ "拒否"。',
+    function_name: 'verify',
+    conditions: ['関数名は verify', 'req["token"] が "t-"+user なら本人とみなす', 'トークンOK かつ action 許可なら "許可"、でなければ "拒否"'],
+    starter: 'def verify(req, policy):\n    user = req.get("user")\n    ',
+    tests: [
+      { call: 'verify({"token":"t-haruki","user":"haruki","action":"read"}, {"haruki":["read"]})', expected: '許可' },
+      { call: 'verify({"token":"bad","user":"haruki","action":"read"}, {"haruki":["read"]})', expected: '拒否' },
+      { call: 'verify({"token":"t-haruki","user":"haruki","action":"delete"}, {"haruki":["read"]})', expected: '拒否' }
+    ],
+    hint: 'まず req.get("token") != "t-" + str(user) なら "拒否"。次に action in policy.get(user, []) なら "許可"、最後に "拒否"。'
+  },
+  {
+    id: 'issue', title: '⑤ トークン発行(PA)', tenet: 'PA・deny by default',
+    spec: '既知のユーザーにだけセッショントークンを発行する issue(user, known) を書こう。' +
+      'known（リスト）に居れば "t-"＋user を返し、居なければ "" を返す（発行しない＝拒否）。',
+    function_name: 'issue',
+    conditions: ['関数名は issue', 'user が known にあれば "t-"+user', '無ければ "" を返す（発行しない）'],
+    starter: 'def issue(user, known):\n    ',
+    tests: [{ call: 'issue("haruki", ["haruki","aoi"])', expected: 't-haruki' }, { call: 'issue("mallory", ["haruki"])', expected: '' }],
+    hint: 'if user in known: return "t-" + user。最後に return "" で「知らない人には出さない」。'
+  },
+  {
+    id: 'gate2', title: '⑥ 動的ロック（文脈を見る）', tenet: '原則4・動的ポリシー',
+    spec: '失敗回数を見て判断する gate2(user, token, fails) を書こう。fails は {user: 失敗回数} の辞書。' +
+      '失敗が3回以上のユーザーは正しいトークンでも "拒否（ロック）"。それ以外は正しいトークン "ok" なら "許可"、違えば "拒否"。',
+    function_name: 'gate2',
+    conditions: ['関数名は gate2', 'fails[user] が 3以上なら "拒否（ロック）"', 'token == "ok" なら "許可"、でなければ "拒否"'],
+    starter: 'def gate2(user, token, fails):\n    ',
+    tests: [
+      { call: 'gate2("haruki","ok",{"haruki":0})', expected: '許可' },
+      { call: 'gate2("haruki","ok",{"haruki":3})', expected: '拒否（ロック）' },
+      { call: 'gate2("haruki","bad",{"haruki":0})', expected: '拒否' }
+    ],
+    hint: '最初に fails.get(user, 0) >= 3 を判定して "拒否（ロック）"。その後でトークンを見る＝順番が大事。'
+  },
+  {
+    id: 'check_integrity', title: '⑦ 改ざん検知（hashlib）', tenet: '原則5・完全性',
+    spec: 'データが改ざんされていないか確認する check_integrity(data, expected) を書こう。' +
+      'data の SHA-256（16進文字列）が expected と一致すれば "OK"、違えば "改ざん検知" を返す。hashlib を使う。',
+    function_name: 'check_integrity',
+    conditions: ['関数名は check_integrity', 'hashlib.sha256(data.encode()).hexdigest() を使う', '一致で "OK"、不一致で "改ざん検知"'],
+    starter: 'import hashlib\n\ndef check_integrity(data, expected):\n    ',
+    tests: [
+      { call: 'check_integrity("hello", "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")', expected: 'OK' },
+      { call: 'check_integrity("hello!", "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824")', expected: '改ざん検知' }
+    ],
+    hint: 'h = hashlib.sha256(data.encode()).hexdigest() を作り、h == expected を if で見て "OK"/"改ざん検知" を返す。'
+  },
+  {
+    id: 'zt_gate', title: '⑧ 卒業：ミニ・ゼロトラストゲート', tenet: '原則3・4・6 全部入り',
+    spec: '集大成。zt_gate(req, policy, known) を書こう。req = {"token","user","action"}。' +
+      '①user が known に居る ②token が "t-"+user ③policy で action 可能、の【全部】を満たした時だけ "許可"。1つでも欠けたら "拒否"（deny-by-default）。これが NIST SP 800-207 の PEP の最小実装。',
+    function_name: 'zt_gate',
+    conditions: ['関数名は zt_gate', '未知のユーザー／トークン不一致／権限なし は "拒否"', '3つ全部OKの時だけ "許可"'],
+    starter: 'def zt_gate(req, policy, known):\n    user = req.get("user")\n    ',
+    tests: [
+      { call: 'zt_gate({"token":"t-haruki","user":"haruki","action":"read"}, {"haruki":["read"]}, ["haruki"])', expected: '許可' },
+      { call: 'zt_gate({"token":"t-haruki","user":"haruki","action":"read"}, {"haruki":["read"]}, [])', expected: '拒否' },
+      { call: 'zt_gate({"token":"bad","user":"haruki","action":"read"}, {"haruki":["read"]}, ["haruki"])', expected: '拒否' },
+      { call: 'zt_gate({"token":"t-haruki","user":"haruki","action":"delete"}, {"haruki":["read"]}, ["haruki"])', expected: '拒否' }
+    ],
+    hint: '前の④⑤⑥で書いた判定を順に重ねるだけ。user not in known → 拒否、token 不一致 → 拒否、action 許可 → "許可"、最後に "拒否"。'
+  }
+];
+
 // ---------------------------------------------------------------------
 // ZTDojo — 画面コントローラ（自己完結）。app.js からは ZTDojo.open() だけ呼ぶ。
 // ---------------------------------------------------------------------
@@ -162,7 +271,7 @@ const ZTDojo = (function () {
   function loadSrs() { try { return JSON.parse(localStorage.getItem(SRS_KEY) || '{}') || {}; } catch (e) { return {}; } }
   function saveSrs(s) { try { localStorage.setItem(SRS_KEY, JSON.stringify(s)); } catch (e) { /* 容量超過でも学習は止めない */ } }
 
-  let tab = 'learn';
+  let tab = 'code'; // 本命＝書く演習を最初に出す
 
   function open() {
     if (typeof show === 'function') show('screen-zt'); else { el('screen-zt').hidden = false; window.scrollTo(0, 0); }
@@ -170,15 +279,134 @@ const ZTDojo = (function () {
   }
 
   function render() {
-    const tabs = [['learn', '📖 学ぶ'], ['recall', '🎯 思い出す'], ['career', '💼 進路']];
+    const tabs = [['code', '🛠 書く'], ['learn', '📖 学ぶ'], ['recall', '🎯 思い出す'], ['career', '💼 進路']];
     el('zt-tabs').innerHTML = tabs.map(([k, label]) =>
       `<button class="zt-tab${k === tab ? ' active' : ''}" data-tab="${k}">${label}</button>`).join('');
     el('zt-tabs').querySelectorAll('.zt-tab').forEach((b) => {
       b.onclick = () => { tab = b.dataset.tab; render(); };
     });
-    if (tab === 'learn') renderLearn();
+    if (tab === 'code') renderCoding();
+    else if (tab === 'learn') renderLearn();
     else if (tab === 'recall') renderRecall();
     else renderCareer();
+  }
+
+  // 出力の正規化（サーバ grade.js の normalizedEquals_ と同じ）
+  function norm(s) {
+    return String(s == null ? '' : s).replace(/\r\n/g, '\n').split('\n')
+      .map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+  }
+  const CODE_DONE_KEY = 'zt-coding-done';
+  const codeKey = (id) => 'zt-code-' + id;
+  function loadDone() { try { return JSON.parse(localStorage.getItem(CODE_DONE_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function isDone(id) { return !!loadDone()[id]; }
+  function markDone(id) { const d = loadDone(); d[id] = true; try { localStorage.setItem(CODE_DONE_KEY, JSON.stringify(d)); } catch (e) {} }
+
+  // 🛠 書く：演習一覧。前を解くと次が開く（順番に積み上げる）
+  function renderCoding() {
+    const done = loadDone();
+    let unlocked = true; // 先頭は常に開いている
+    let h = '<p class="zt-note">ゼロトラストを取り入れたPythonを<strong>自分で書く</strong>階段。' +
+      '一段ずつ書いてテストで判定（答えは出ません）。最後は NIST SP 800-207 の門番(PEP)の最小実装＝卒業制作。</p>';
+    const total = ZT_CODING.length;
+    const cleared = ZT_CODING.filter((e) => done[e.id]).length;
+    h += `<div class="zt-quiz-head">クリア: ${cleared}/${total}</div>`;
+    ZT_CODING.forEach((ex) => {
+      const d = !!done[ex.id];
+      const open = unlocked || d;
+      const mark = d ? '✅' : (open ? '▶' : '🔒');
+      h += `<button class="zt-ex-row${open ? '' : ' locked'}" data-id="${ex.id}"${open ? '' : ' disabled'}>` +
+        `<span>${mark} ${zEsc(ex.title)}</span><span class="zt-ex-tenet">${zEsc(ex.tenet)}</span></button>`;
+      if (!d) unlocked = false; // 未クリアならその先はロック
+    });
+    el('zt-body').innerHTML = h;
+    el('zt-body').querySelectorAll('.zt-ex-row:not(.locked)').forEach((b) => {
+      b.onclick = () => openExercise(ZT_CODING.filter((e) => e.id === b.dataset.id)[0]);
+    });
+  }
+
+  let curEx = null;
+  function openExercise(ex) {
+    curEx = ex;
+    const saved = (() => { try { return localStorage.getItem(codeKey(ex.id)); } catch (e) { return null; } })();
+    const code = (saved != null && saved !== '') ? saved : ex.starter;
+    el('zt-body').innerHTML =
+      `<button id="zt-ex-back" class="btn-small">← 演習一覧</button>` +
+      `<div class="zt-card"><div class="zt-q">${zEsc(ex.title)} <span class="zt-ex-tenet">${zEsc(ex.tenet)}</span></div>` +
+      `<div class="zt-a">${zEsc(ex.spec)}</div>` +
+      `<ul class="zt-cond">${ex.conditions.map((c) => `<li>${zEsc(c)}</li>`).join('')}</ul></div>` +
+      `<textarea id="zt-editor" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off"></textarea>` +
+      `<div class="run-row"><button id="zt-run" class="btn-primary">▶ 実行</button>` +
+      `<button id="zt-test" class="btn-accent">✓ テストで判定</button></div>` +
+      `<div id="zt-run-status" class="loading" hidden></div>` +
+      `<pre id="zt-run-out" hidden></pre>` +
+      `<button id="zt-hint-btn" class="btn-ghost">💡 ヒント</button>` +
+      `<div id="zt-hint" class="zt-note" hidden></div>` +
+      `<div id="zt-test-result"></div>`;
+    const ed = el('zt-editor');
+    ed.value = code;
+    // Tabキーで2スペース字下げ（既存エディタと同じ操作感）
+    ed.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') { e.preventDefault(); const p = ed.selectionStart; ed.value = ed.value.slice(0, p) + '  ' + ed.value.slice(ed.selectionEnd); ed.selectionStart = ed.selectionEnd = p + 2; }
+    });
+    ed.addEventListener('input', () => { try { localStorage.setItem(codeKey(ex.id), ed.value); } catch (e2) {} });
+    el('zt-ex-back').onclick = () => renderCoding();
+    el('zt-run').onclick = runExercise;
+    el('zt-test').onclick = testExercise;
+    el('zt-hint-btn').onclick = () => { const hb = el('zt-hint'); hb.textContent = '💡 ' + ex.hint; hb.hidden = false; el('zt-hint-btn').hidden = true; };
+  }
+
+  async function runExercise() {
+    const code = el('zt-editor').value;
+    if (!code.trim()) { el('zt-run-out').textContent = 'コードが空です。まず書いてみよう'; el('zt-run-out').hidden = false; return; }
+    setBusy(true);
+    const r = await Runner.run(code, (m) => { el('zt-run-status').textContent = m; });
+    setBusy(false);
+    const text = (r.stdout || '') + (r.stderr || '') + (r.error && r.stdout === undefined ? r.error : '');
+    el('zt-run-out').textContent = text || '(出力なし。関数を定義しただけなら、print(...) で呼び出して試そう)';
+    el('zt-run-out').className = (r.stderr || r.error) ? 'has-error' : '';
+    el('zt-run-out').hidden = false;
+  }
+
+  // §2 と同じ精神：テストはPyodideでユーザーのコードをN回実行して機械判定（合否確定）。答えは出さない
+  async function testExercise() {
+    const code = el('zt-editor').value;
+    if (!code.trim()) { showTestMsg('まずコードを書いてみよう'); return; }
+    setBusy(true);
+    const rows = [];
+    let allPass = true;
+    for (const t of curEx.tests) {
+      el('zt-run-status').textContent = 'テスト実行中…';
+      const r = await Runner.run(code + '\nprint(' + t.call + ')', (m) => { el('zt-run-status').textContent = m; });
+      const err = (r.stderr || '').indexOf('Traceback') !== -1 || (r.error && r.stdout === undefined);
+      const pass = !err && !r.timeout && norm(r.stdout) === norm(t.expected);
+      if (!pass) allPass = false;
+      // 入力(call)と合否だけ見せる。期待値は出さない（自分で考える §1/§11）
+      rows.push(`<div class="build-test ${pass ? 'pass' : 'fail'}">${pass ? '✓' : '✗'} ${zEsc(t.call)}</div>`);
+    }
+    setBusy(false);
+    let h = rows.join('');
+    if (allPass) {
+      markDone(curEx.id);
+      const idx = ZT_CODING.findIndex((e) => e.id === curEx.id);
+      const next = ZT_CODING[idx + 1];
+      h = `<div class="zt-pass">🎉 全テスト通過！ ${zEsc(curEx.title)} クリア</div>` + h +
+        (next ? `<button id="zt-next-ex" class="btn-primary">次の演習へ ▶</button>` : `<div class="zt-done">🏆 全演習クリア！ ゼロトラストの門番を自分で書けるようになった。卒業制作レベルです。</div>`) +
+        `<button id="zt-back2" class="btn-ghost">演習一覧へ</button>`;
+    } else {
+      h = `<div class="zt-fail">まだ通らないテストがある。条件を見直して直そう（答えは出ません＝自分で組む段）。詰まったら💡ヒント。</div>` + h;
+    }
+    el('zt-test-result').innerHTML = h;
+    if (allPass) {
+      const nb = el('zt-next-ex'); if (nb) nb.onclick = () => openExercise(ZT_CODING[ZT_CODING.findIndex((e) => e.id === curEx.id) + 1]);
+      el('zt-back2').onclick = () => renderCoding();
+    }
+  }
+  function showTestMsg(msg) { el('zt-test-result').innerHTML = `<div class="zt-fail">${zEsc(msg)}</div>`; }
+  function setBusy(b) {
+    el('zt-run-status').hidden = !b;
+    const run = el('zt-run'), test = el('zt-test');
+    if (run) run.disabled = b; if (test) test.disabled = b;
   }
 
   // 📖 学ぶ：800-207を分解した地図＋Python実装への接続

@@ -701,3 +701,17 @@ button:disabled { opacity: 0.35; }
 .zt-q-big { font-size: 1.15rem; font-weight: bold; margin: 10px 0 14px; }
 .zt-grade { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
 .zt-done { text-align: center; color: var(--accent); padding: 24px 12px; }
+
+/* ---- 🛠 ゼロトラスト・コード演習 ---- */
+.zt-ex-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%;
+  text-align: left; background: var(--panel); color: var(--text); border: 1px solid #2b3040;
+  border-radius: var(--radius); padding: 12px; margin: 6px 0; font-size: 0.95rem; }
+.zt-ex-row.locked { opacity: 0.5; }
+.zt-ex-tenet { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+.zt-cond { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 0.9rem; }
+#zt-editor { width: 100%; min-height: 180px; margin-top: 10px; background: var(--panel2); color: var(--text);
+  border: 1px solid #333a48; border-radius: var(--radius); padding: 10px 12px;
+  font-family: monospace; font-size: 15px; line-height: 1.5; }
+.zt-pass { color: var(--accent); font-weight: bold; margin: 10px 0; }
+.zt-fail { color: var(--accent2); margin: 10px 0; }
+#zt-test-result button { display: block; width: 100%; margin: 10px 0; }
