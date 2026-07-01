@@ -64,9 +64,19 @@ jobs:
         env:
           GAS_DEPLOYMENT_ID: ${{ secrets.GAS_DEPLOYMENT_ID }}
         run: |
-          if [ -n "$GAS_DEPLOYMENT_ID" ]; then
-            clasp deploy -i "$GAS_DEPLOYMENT_ID" -d "auto: ${GITHUB_SHA}"
-          else
+          if [ -z "$GAS_DEPLOYMENT_ID" ]; then
             echo "::warning::GAS_DEPLOYMENT_ID が未設定のため push のみ実行しました。GASエディタの既存デプロイには反映されていません。READMEを参照しSecretsを追加してください"
+            exit 0
+          fi
+          # コピペ事故対策で前後の空白・改行を除去。デプロイIDは GAS_URL の /macros/s/ と /exec の間の文字列
+          DEP_ID=$(printf '%s' "$GAS_DEPLOYMENT_ID" | tr -d '[:space:]')
+          echo "deployment id length: ${#DEP_ID}"  # 値は出さず長さだけ（AKfyc… で概ね57〜72文字）
+          # clasp deploy は「Invalid deployment ID」でも exit 0 を返すことがあるため、出力を検査して
+          # 確実に失敗させる（本番URL=あなたのアプリが叩くURLが更新されない事故を黙って見逃さないため §14）
+          out=$(clasp deploy -i "$DEP_ID" -d "auto: ${GITHUB_SHA}" 2>&1) || true
+          echo "$out"
+          if echo "$out" | grep -qiE 'invalid deployment|not found|error'; then
+            echo "::error::clasp deploy に失敗しました。GAS_DEPLOYMENT_ID を確認してください（GAS_URL の https://script.google.com/macros/s/【ここ】/exec の【ここ】と一致する必要があります）"
+            exit 1
           fi
         working-directory: gas
