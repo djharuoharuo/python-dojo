@@ -243,6 +243,121 @@ const ZT_CODING = [
   }
 ];
 
+// =====================================================================
+// 🏗 卒業制作ロードマップ（週1ビルド日 §11/§17）。
+// 道場の8段（ブラウザ内ドリル）を、本物のGitHubリポジトリ「zt-gate」として組み上げる。
+// 狙い：①ドリル→実物への転移（トイ問題だけでは実物を組む力に繋がらない）
+//      ②就活ポートフォリオ（2026年のジュニア採用は資格より「動く実物＋説明」を見る）
+// 方針：自分が道場で書いたコードを【自分の手で移植】する＝答えを渡さず、再構築がそのまま復習になる。
+//      1回のビルド日に1歩だけ。進捗は localStorage（この端末）に保存。
+// 各歩のAPIヒントは python3 で動作検証済み（間違った手引きを出さない §2の精神）。
+// =====================================================================
+const ZT_CAPSTONE = [
+  {
+    id: 'repo', title: '第0歩：リポジトリを作る', dojo: '準備',
+    goal: 'GitHub上に「zt-gate」という空の家を建てる。ここに毎週1歩ずつ積む。',
+    todo: [
+      'github.com → 右上「+」→ New repository → 名前 zt-gate → Public → 「Add a README file」にチェック → Create',
+      'PCで: git clone https://github.com/あなたのID/zt-gate.git → cd zt-gate',
+      'スマホ(Termux)でもやるなら: pkg install git python → 同じく clone'
+    ],
+    check: 'フォルダの中で git status がエラーなく動く',
+    commit: '（READMEは作成済みなのでコミット不要）'
+  },
+  {
+    id: 'gate', title: '第1歩：門番 gate.py', dojo: '道場①②',
+    goal: 'deny-by-default と fail-closed の門番を実ファイルにする。',
+    todo: [
+      'gate.py を作り、道場①の gate() と②の safe_gate() を【見ずに自分の手で】書き直す（再構築＝最強の復習）',
+      '末尾に動作確認を足す:',
+      'if __name__ == "__main__":\n    print(gate("secret123"))\n    print(gate("wrong"))',
+      'python3 gate.py で 許可/拒否 が出ることを確認'
+    ],
+    check: 'python3 gate.py で「許可」「拒否」が表示される',
+    commit: 'git add gate.py && git commit -m "deny-by-defaultとfail-closedの門番" && git push'
+  },
+  {
+    id: 'tests', title: '第2歩：テスト test_gate.py', dojo: '実務の型',
+    goal: 'アプリが君にしてきた「テストで判定」を、今度は君が自分のコードにする側になる。',
+    todo: [
+      'test_gate.py を作り、assert で門番の約束を固定する:',
+      'from gate import gate, safe_gate\nassert gate("secret123") == "許可"\nassert gate("wrong") == "拒否"\nassert safe_gate(None) == "拒否"\nprint("all tests passed")',
+      'python3 test_gate.py で all tests passed が出る（1つでも破れると途中で止まる）'
+    ],
+    check: 'わざと gate.py を壊すとテストが落ち、直すと通る（テストが門番を守っている実感）',
+    commit: 'git add test_gate.py && git commit -m "門番のテスト" && git push'
+  },
+  {
+    id: 'policy', title: '第3歩：ポリシーエンジン policy.py', dojo: '道場③',
+    goal: '「誰に何を許すか」をコードから分離し、ファイル(policy.json)で管理する＝本物のPEの形。',
+    todo: [
+      'policy.json を作る（架空IDで。実在の個人情報は入れない）: {"haruki": ["read", "write"], "guest": ["read"]}',
+      'policy.py を作り、道場③の can(user, action, policy) を移植',
+      'さらにファイルから読む関数を足す: import json → def load_policy(path):\n    with open(path) as f:\n        return json.load(f)',
+      'test_gate.py に policy のテストも追加（can("guest","write",...) == False など）'
+    ],
+    check: 'policy.json の中身を書き換えると、コードを触らずに判定が変わる',
+    commit: 'git add policy.py policy.json test_gate.py && git commit -m "ポリシーエンジン(PE)を分離" && git push'
+  },
+  {
+    id: 'verify', title: '第4歩：毎リクエスト検証', dojo: '道場④',
+    goal: 'リクエスト（辞書）を1件ずつ検証する入口を作る＝「セッションを信頼しない」の実装。',
+    todo: [
+      'gate.py に道場④の verify(req, policy) を移植（トークン確認 → 権限確認 → だめなら拒否）',
+      '__main__ で数パターン流して動作確認（正しいreq / トークン違い / 権限なし）'
+    ],
+    check: '3パターン（許可・トークン不一致で拒否・権限なしで拒否）が全部正しく出る',
+    commit: 'git add gate.py && git commit -m "毎リクエスト検証" && git push'
+  },
+  {
+    id: 'tokens', title: '第5歩：本物のトークン tokens.py', dojo: '道場⑤の格上げ',
+    goal: '"t-ユーザー名" のおもちゃトークンを、推測不能な本物＋有効期限つきに格上げする（PAの仕事）。',
+    todo: [
+      'tokens.py を作る。発行は secrets を使う: import secrets → token = secrets.token_urlsafe(16)',
+      '発行時に有効期限も決める: import datetime → expiry = datetime.datetime.now() + datetime.timedelta(minutes=30)',
+      '発行済みトークンは辞書 {token: {"user": ..., "expiry": ...}} で持ち、検証時に「存在する？期限内？」を確認',
+      '期限切れは必ず「拒否」（fail closed）'
+    ],
+    check: '正しいトークンは通り、でたらめなトークンと期限切れは拒否される',
+    commit: 'git add tokens.py && git commit -m "secretsによる本物のトークン発行(PA)" && git push'
+  },
+  {
+    id: 'log', title: '第6歩：ロックアウト＋アクセスログ', dojo: '道場⑥＋原則7',
+    goal: '失敗を数えて動的にロックし、全アクセスを記録する＝「状態を収集して次の判定に活かす」。',
+    todo: [
+      '道場⑥の fails 辞書によるロックアウト（3回失敗で拒否）を verify に組み込む',
+      '判定のたびにログを1行追記（JSON Lines形式）:',
+      'import json, datetime\nline = json.dumps({"time": datetime.datetime.now().isoformat(), "user": user, "action": action, "result": result}, ensure_ascii=False)\nwith open("access.log", "a") as f:\n    f.write(line + "\\n")',
+      '※ access.log は .gitignore に足してコミットしない（ログを公開リポジトリに置かない）'
+    ],
+    check: '何回か実行すると access.log に判定の履歴が溜まっていく',
+    commit: 'git add gate.py .gitignore && git commit -m "ロックアウトとアクセスログ" && git push'
+  },
+  {
+    id: 'integrity', title: '第7歩：改ざん検知', dojo: '道場⑦',
+    goal: 'policy.json が書き換えられていないか起動時に検査する＝資産の完全性の監視（原則5）。',
+    todo: [
+      '道場⑦の check_integrity を移植し、ファイル版にする: 中身を読んで hashlib.sha256(text.encode()).hexdigest() を照合',
+      '正しいハッシュは別ファイル policy.sha256 に保存しておき、起動時に照合',
+      '不一致なら【全リクエスト拒否】にする（改ざんされたポリシーで判定しない＝fail closed）'
+    ],
+    check: 'policy.json を1文字書き換えると、門番が全拒否になる',
+    commit: 'git add gate.py policy.sha256 && git commit -m "ポリシーの改ざん検知" && git push'
+  },
+  {
+    id: 'readme', title: '第8歩：READMEを書いて公開（卒業）', dojo: '道場⑧＝まとめ',
+    goal: '「何を作り、なぜそう作ったか」を自分の言葉で書く。これが就活で一番読まれるページになる。',
+    todo: [
+      'README.md に書く: ①これは何か（ミニ・ゼロトラストゲート） ②実行方法 ③設計の説明',
+      '③には NIST SP 800-207 との対応表を入れる: policy.py=PE（決定） / tokens.py=PA（発行） / gate.py verify=PEP（関所） / access.log=原則7（収集）',
+      '「なぜ deny-by-default か」「なぜ fail closed か」を1段落ずつ自分の言葉で',
+      'GitHubプロフィールで zt-gate をピン留め（Customize your pins）'
+    ],
+    check: '初見の人がREADMEだけ読んで「何ができて、なぜ安全か」を理解できる',
+    commit: 'git add README.md && git commit -m "設計解説（NIST SP 800-207対応）" && git push'
+  }
+];
+
 // ---------------------------------------------------------------------
 // ZTDojo — 画面コントローラ（自己完結）。app.js からは ZTDojo.open() だけ呼ぶ。
 // ---------------------------------------------------------------------
@@ -273,22 +388,67 @@ const ZTDojo = (function () {
 
   let tab = 'code'; // 本命＝書く演習を最初に出す
 
-  function open() {
+  // tabName を渡すとそのタブで開く（例: ホームのビルド日バナー → ZTDojo.open('capstone')）
+  function open(tabName) {
+    if (tabName) tab = tabName;
     if (typeof show === 'function') show('screen-zt'); else { el('screen-zt').hidden = false; window.scrollTo(0, 0); }
     render();
   }
 
   function render() {
-    const tabs = [['code', '🛠 書く'], ['learn', '📖 学ぶ'], ['recall', '🎯 思い出す'], ['career', '💼 進路']];
+    const tabs = [['code', '🛠 書く'], ['capstone', '🏗 制作'], ['learn', '📖 学ぶ'], ['recall', '🎯 思い出す'], ['career', '💼 進路']];
     el('zt-tabs').innerHTML = tabs.map(([k, label]) =>
       `<button class="zt-tab${k === tab ? ' active' : ''}" data-tab="${k}">${label}</button>`).join('');
     el('zt-tabs').querySelectorAll('.zt-tab').forEach((b) => {
       b.onclick = () => { tab = b.dataset.tab; render(); };
     });
     if (tab === 'code') renderCoding();
+    else if (tab === 'capstone') renderCapstone();
     else if (tab === 'learn') renderLearn();
     else if (tab === 'recall') renderRecall();
     else renderCareer();
+  }
+
+  // 🏗 制作：卒業制作ロードマップ（週1ビルド日に1歩ずつ・実GitHubリポジトリ）
+  const CAPSTONE_KEY = 'zt-capstone';
+  function loadCapstone() { try { return JSON.parse(localStorage.getItem(CAPSTONE_KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function saveCapstone(d) { try { localStorage.setItem(CAPSTONE_KEY, JSON.stringify(d)); } catch (e) { /* 保存不可でも表示は生きる */ } }
+
+  function renderCapstone() {
+    const done = loadCapstone();
+    const total = ZT_CAPSTONE.length;
+    const doneCount = ZT_CAPSTONE.filter((s) => done[s.id]).length;
+    let firstOpen = null; // 最初の未完了の歩だけ開いておく（今日やるのはここ）
+    let h = `<p class="zt-note">卒業制作「<strong>zt-gate</strong>」を、道場で書いたコードを移植しながら` +
+      `<strong>本物のGitHubリポジトリ</strong>として組み上げる。週1のビルド日に<strong>1歩だけ</strong>。` +
+      `完成すれば就活で見せられる「動く実物」になる。</p>` +
+      `<div class="zt-quiz-head">進捗: ${doneCount}/${total} 歩 ${doneCount >= total ? '🏆 完成！' : ''}</div>`;
+    ZT_CAPSTONE.forEach((s) => {
+      const d = !!done[s.id];
+      const isOpen = !d && firstOpen === null;
+      if (isOpen) firstOpen = s.id;
+      h += `<details class="zt-sec cap-step"${isOpen ? ' open' : ''}>` +
+        `<summary>${d ? '✅' : '▶'} ${zEsc(s.title)} <span class="zt-ex-tenet">${zEsc(s.dojo)}</span></summary>` +
+        `<div class="zt-a cap-goal">${zEsc(s.goal)}</div>` +
+        `<ul class="zt-cond">` + s.todo.map((t) =>
+          t.indexOf('\n') !== -1
+            ? `<li><pre class="cap-code">${zEsc(t)}</pre></li>`
+            : `<li>${zEsc(t)}</li>`).join('') + `</ul>` +
+        `<div class="cap-check">☑ できた確認: ${zEsc(s.check)}</div>` +
+        `<div class="cap-commit">💾 ${zEsc(s.commit)}</div>` +
+        `<button class="btn-small cap-toggle" data-id="${s.id}">${d ? '完了を取り消す' : '✅ この歩を完了にする'}</button>` +
+        `</details>`;
+    });
+    h += `<p class="zt-note">※ 進捗チェックはこの端末に保存されます。コードそのものはGitHub上が正＝どの端末からでも続きができます。</p>`;
+    el('zt-body').innerHTML = h;
+    el('zt-body').querySelectorAll('.cap-toggle').forEach((b) => {
+      b.onclick = () => {
+        const d = loadCapstone();
+        if (d[b.dataset.id]) delete d[b.dataset.id]; else d[b.dataset.id] = true;
+        saveCapstone(d);
+        renderCapstone();
+      };
+    });
   }
 
   // 出力の正規化（サーバ grade.js の normalizedEquals_ と同じ）

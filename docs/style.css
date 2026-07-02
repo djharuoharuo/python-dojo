@@ -715,3 +715,15 @@ button:disabled { opacity: 0.35; }
 .zt-pass { color: var(--accent); font-weight: bold; margin: 10px 0; }
 .zt-fail { color: var(--accent2); margin: 10px 0; }
 #zt-test-result button { display: block; width: 100%; margin: 10px 0; }
+
+/* ---- 🏗 週1ビルド日＋卒業制作ロードマップ ---- */
+.build-banner { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  background: #23301f; border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: 10px 12px; margin: 10px 0; font-size: 0.95rem; }
+.cap-step .cap-goal { margin: 6px 0; }
+.cap-code { background: var(--panel2); border-radius: 8px; padding: 8px 10px; margin: 4px 0;
+  font-size: 0.85rem; overflow-x: auto; white-space: pre; }
+.cap-check { color: var(--accent); font-size: 0.9rem; margin: 8px 0 2px; }
+.cap-commit { color: var(--muted); font-size: 0.82rem; font-family: monospace; margin-bottom: 8px;
+  overflow-wrap: anywhere; }
+.cap-toggle { margin-bottom: 6px; }

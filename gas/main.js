@@ -91,13 +91,20 @@ function actionGetToday_() {
     return c.state === '習得' && c.no_review !== 'TRUE' && c.due && c.due <= today;
   }).length;
 
+  // ストリーク（❄️週1フリーズつき）と週間ゴール（§11 Phase2: 赦しの設計）
+  var sinfo = streakInfo_(attemptDays_(), todayStr_(), Number(getConf_('weekly_goal_days', 5)));
+
   return {
     problems: problems,
     summary: {
       mastered: mastered,
       total: concepts.length,
       due_count: dueCount,
-      streak: calcStreak_(),
+      streak: sinfo.streak,
+      streak_freeze_used: sinfo.freeze_used_this_week, // ❄️ 今週の身代わりを使ったか（表示用）
+      week_days: sinfo.week_days,                      // 今週の活動日数（月〜今日）
+      weekly_goal: sinfo.weekly_goal,                  // 週の目標日数（config: weekly_goal_days）
+      build_day: Number(getConf_('build_day', 6)),     // 🏗 ビルド日（0=日…6=土。config: build_day）
       bottleneck: recentBottleneck_()
     },
     // 各問題の下書き（PC↔スマホ共有）。フロントは開いた問題を続きから復元する
@@ -138,21 +145,13 @@ function recentBottleneck_() {
   return top ? top.pattern : '';
 }
 
-// attempts の日付から連続学習日数を算出（今日または昨日から途切れず遡れる日数）
-function calcStreak_() {
+// attempts から「活動した日」の一覧を返す（ストリーク計算の材料。streak.js が純関数で判定する）
+function attemptDays_() {
   var days = {};
   readRows_('attempts').forEach(function (a) {
     if (a.timestamp) days[a.timestamp.slice(0, 10)] = true;
   });
-  var d = new Date();
-  // 今日まだ解いていなくてもストリークは昨日まで生きている扱い
-  if (!days[dateStr_(d)]) d.setDate(d.getDate() - 1);
-  var streak = 0;
-  while (days[dateStr_(d)]) {
-    streak++;
-    d.setDate(d.getDate() - 1);
-  }
-  return streak;
+  return Object.keys(days);
 }
 
 // ---------------------------------------------------------------------

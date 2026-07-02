@@ -167,8 +167,20 @@ async function loadHome() {
 
 function renderHome(data) {
   const s = data.summary;
-  $('streak').textContent = s.streak > 0 ? `🔥 ${s.streak}日連続` : '';
-  $('progress').textContent = `習得 ${s.mastered}/${s.total} ・ 今日の復習対象 ${s.due_count}件`;
+  // ストリーク：❄️は「今週の身代わり（週1フリーズ）でつながっている」印（赦しの設計 §11）
+  let streakText = s.streak > 0 ? `🔥 ${s.streak}日連続` : '';
+  if (s.streak_freeze_used) streakText += ' ❄️';
+  $('streak').textContent = streakText;
+  // 週間ゴール：毎日でなく「週n日でOK」。1日切れても週目標が生きる
+  const weekPart = (s.week_days != null && s.weekly_goal)
+    ? ` ・ 今週 ${s.week_days}/${s.weekly_goal}日${s.week_days >= s.weekly_goal ? ' 🎉' : ''}` : '';
+  $('progress').textContent = `習得 ${s.mastered}/${s.total} ・ 今日の復習対象 ${s.due_count}件${weekPart}`;
+  // 🏗 ビルド日（週1）：今日が build_day ならバナーを出し、卒業制作（実リポジトリ）へ誘導
+  const bb = $('build-banner');
+  if (bb) {
+    const isBuildDay = s.build_day != null && new Date().getDay() === Number(s.build_day);
+    bb.hidden = !isBuildDay;
+  }
   if (s.bottleneck) {
     $('bottleneck').textContent = `今日はこれを潰すと効く：${s.bottleneck}`;
     $('bottleneck').hidden = false;
@@ -1601,6 +1613,8 @@ if ($('btn-capture-back')) $('btn-capture-back').onclick = () => loadHome();
 // 🛡 ゼロトラスト道場（NIST SP 800-207 への道）。zt.js が自己完結で画面を描く
 if ($('btn-zt-dojo')) $('btn-zt-dojo').onclick = () => ZTDojo.open();
 if ($('btn-zt-back')) $('btn-zt-back').onclick = () => loadHome();
+// 🏗 ビルド日バナー → 道場の「制作」タブ（卒業制作を実リポジトリで進める）へ直行
+if ($('btn-build-go')) $('btn-build-go').onclick = () => ZTDojo.open('capstone');
 if ($('btn-cap-submit')) $('btn-cap-submit').onclick = submitCapture;
 
 function openCapture() {
