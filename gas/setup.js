@@ -224,7 +224,12 @@ function configDefaults_() {
     // 検証で落ちた（実行時エラー/テスト不通過）候補を作り直す最大回数（§2: 破棄→再生成→スキップ）
     ['capture_regen_retries', 3],
     // 「今すぐ解く」で読んだ直後に出す問題数（§6: test-enhanced learning は補助）
-    ['capture_immediate_count', 1]
+    ['capture_immediate_count', 1],
+    // --- 習慣化（§11 Phase2: 赦しの設計）---
+    // 週の目標日数。「毎日」でなく「週5日でOK」＝1日切れても週目標が生きる
+    ['weekly_goal_days', 5],
+    // 🏗 ビルド日（週1回、ドリルの代わりに卒業制作を実リポジトリで1歩進める日）。0=日曜…6=土曜
+    ['build_day', 6]
   ];
 }
 
