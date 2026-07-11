@@ -60,5 +60,35 @@ const Runner = {
 
       worker.postMessage({ type: 'run', code });
     });
+  },
+
+  // 全角記号の検出。スマホのキーボードが `"`→`”`、`(`→`（` 等に自動変換すると
+  // Python が「unterminated string literal」等の分かりにくいエラーを出す（初心者殺しの罠）。
+  // スマート引用符・全角括弧・全角コロン・全角スペースだけを対象にする
+  // （文字列の中の日本語「許可」等は誤検知しない）。問題があれば日本語の警告、無ければ null。
+  checkInput(code) {
+    var bad = [];
+    if (/[“”]/.test(code)) bad.push('“ ” → 半角の "');
+    if (/[‘’]/.test(code)) bad.push("‘ ’ → 半角の '");
+    if (/[（）]/.test(code)) bad.push('（ ） → 半角の ( )');
+    if (/：/.test(code)) bad.push('： → 半角の :');
+    if (/　/.test(code)) bad.push('全角スペース → 半角スペース');
+    if (!bad.length) return null;
+    return '全角の記号が混じっています（スマホのキーボードが自動変換したのかも）。次を直すと動きます:\n・' + bad.join('\n・');
+  },
+
+  // 上記の全角記号を半角へ置換して返す（ワンタップ自動修正用）
+  fixInput(code) {
+    return String(code)
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/（/g, '(').replace(/）/g, ')')
+      .replace(/：/g, ':')
+      .replace(/　/g, ' ');
   }
 };
+
+// Nodeスモークテスト用（ブラウザでは無視される）
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Runner: Runner };
+}

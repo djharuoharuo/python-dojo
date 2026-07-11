@@ -516,9 +516,28 @@ const ZTDojo = (function () {
     el('zt-hint-btn').onclick = () => { const hb = el('zt-hint'); hb.textContent = '💡 ' + ex.hint; hb.hidden = false; el('zt-hint-btn').hidden = true; };
   }
 
+  // 全角記号ガード：混じっていたら警告＋ワンタップ自動修正を出して、実行/判定は止める。
+  // 直せば true 相当で再実行できる（スマホのキーボードが " を ” に変える罠への対策）
+  function fullwidthGuard() {
+    const code = el('zt-editor').value;
+    const warn = Runner.checkInput(code);
+    if (!warn) return true;
+    el('zt-test-result').innerHTML =
+      `<div class="zt-fail zt-fw-warn">⚠️ ${zEsc(warn)}</div>` +
+      `<button id="zt-autofix" class="btn-primary">🔧 全角を半角に直す</button>`;
+    el('zt-run-out').hidden = true;
+    el('zt-autofix').onclick = () => {
+      el('zt-editor').value = Runner.fixInput(el('zt-editor').value);
+      try { localStorage.setItem(codeKey(curEx.id), el('zt-editor').value); } catch (e) { /* 保存不可でも続行 */ }
+      el('zt-test-result').innerHTML = '<div class="zt-note">✅ 半角に直しました。もう一度 [▶ 実行] か [✓ テストで判定] を押してね</div>';
+    };
+    return false;
+  }
+
   async function runExercise() {
     const code = el('zt-editor').value;
     if (!code.trim()) { el('zt-run-out').textContent = 'コードが空です。まず書いてみよう'; el('zt-run-out').hidden = false; return; }
+    if (!fullwidthGuard()) return;
     setBusy(true);
     const r = await Runner.run(code, (m) => { el('zt-run-status').textContent = m; });
     setBusy(false);
@@ -532,13 +551,16 @@ const ZTDojo = (function () {
   async function testExercise() {
     const code = el('zt-editor').value;
     if (!code.trim()) { showTestMsg('まずコードを書いてみよう'); return; }
+    if (!fullwidthGuard()) return;
     setBusy(true);
     const rows = [];
     let allPass = true;
+    let hadError = false; // コード自体がエラー（構文ミス等）で落ちたか
     for (const t of curEx.tests) {
       el('zt-run-status').textContent = 'テスト実行中…';
       const r = await Runner.run(code + '\nprint(' + t.call + ')', (m) => { el('zt-run-status').textContent = m; });
       const err = (r.stderr || '').indexOf('Traceback') !== -1 || (r.error && r.stdout === undefined);
+      if (err) hadError = true;
       const pass = !err && !r.timeout && norm(r.stdout) === norm(t.expected);
       if (!pass) allPass = false;
       // 入力(call)と合否だけ見せる。期待値は出さない（自分で考える §1/§11）
@@ -553,8 +575,11 @@ const ZTDojo = (function () {
       h = `<div class="zt-pass">🎉 全テスト通過！ ${zEsc(curEx.title)} クリア</div>` + h +
         (next ? `<button id="zt-next-ex" class="btn-primary">次の演習へ ▶</button>` : `<div class="zt-done">🏆 全演習クリア！ ゼロトラストの門番を自分で書けるようになった。卒業制作レベルです。</div>`) +
         `<button id="zt-back2" class="btn-ghost">演習一覧へ</button>`;
+    } else if (hadError) {
+      // 出力の不一致ではなく、コード自体がエラーで落ちている（構文ミス・未定義など）
+      h = `<div class="zt-fail">⚠️ コードにエラーがあります（構文ミスなど）。上の [▶ 実行] を押すと、エラーの内容（何行目で何が起きたか）が見られます。直してからまた判定してね。詰まったら💡ヒント。</div>` + h;
     } else {
-      h = `<div class="zt-fail">まだ通らないテストがある。条件を見直して直そう（答えは出ません＝自分で組む段）。詰まったら💡ヒント。</div>` + h;
+      h = `<div class="zt-fail">まだ通らないテストがある。出力が期待と違うみたい。条件を見直して直そう（答えは出ません＝自分で組む段）。詰まったら💡ヒント。</div>` + h;
     }
     el('zt-test-result').innerHTML = h;
     if (allPass) {
