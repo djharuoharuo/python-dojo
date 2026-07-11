@@ -704,7 +704,8 @@ async function gradeBuild() {
   try {
     const outs = [], errs = [];
     for (const t of tests) {
-      const r = await Runner.run(userCode + '\nprint(' + t.call + ')', (msg) => { $('run-status').textContent = msg; });
+      // runCall＝学習者が自分で書いた print(...) に惑わされず、テスト呼び出しの出力だけを取り出す
+      const r = await Runner.runCall(userCode, t.call, (msg) => { $('run-status').textContent = msg; });
       outs.push(r.stdout || '');
       errs.push(r.stderr || '');
     }
@@ -1813,7 +1814,7 @@ async function verifyBuild(cand) {
   const ref = String(cand.reference_solution || '');
   if (!ref || tests.length < 1) return null;
   for (const t of tests) {
-    const run = await Runner.run(ref + '\nprint(' + t.call + ')', (m) => { $('cap-status').textContent = m; });
+    const run = await Runner.runCall(ref, t.call, (m) => { $('cap-status').textContent = m; });
     if (!run || run.timeout || run.error) return null;
     if (String(run.stderr || '').indexOf('Traceback') !== -1) return null;
     if (normalizeOut(run.stdout) !== normalizeOut(t.expected)) return null;
