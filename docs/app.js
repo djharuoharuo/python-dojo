@@ -1019,9 +1019,12 @@ $('btn-wayaku-next').onclick = () => {
 // ---- Stage1: 変数トレース表。Pyodideの sys.settrace で「各行を実行する直前の変数の値」の
 // タイムラインを取得＝真値（LLM不使用）。学習者がそれを表に予想して埋める ----
 function buildTraceHarness(code, vars) {
-  // code と vars を JSON文字列にして安全にPythonへ埋め込む（JSONのエスケープはPython文字列でも有効）
+  // code と vars を JSON文字列にして安全にPythonへ埋め込む（JSONのエスケープはPython文字列でも有効）。
+  // ◆重要: トレース対象コードが print(...) を含むと、その出力が最終JSONに混ざって解析失敗
+  //   （＝「準備に失敗」）になっていた。実行中は stdout を StringIO に退避して print を飲み込み、
+  //   JSONだけを出す。compile失敗（生成コードが壊れている）時は空配列を出して穏当に別問題へ倒す。
   return [
-    'import sys, json',
+    'import sys, json, io',
     '_t = ' + JSON.stringify(vars),
     '_log = []',
     'def _tr(f, e, a):',
@@ -1030,15 +1033,22 @@ function buildTraceHarness(code, vars) {
     '    return _tr',
     '_src = ' + JSON.stringify(code),
     '_g = {}',
-    "_c = compile(_src, '<dojo>', 'exec')",
-    'sys.settrace(_tr)',
     'try:',
-    '    exec(_c, _g)',
+    "    _c = compile(_src, '<dojo>', 'exec')",
     'except Exception:',
-    '    pass',
-    'finally:',
-    '    sys.settrace(None)',
-    '_log.append(["END", {k: str(_g[k]) for k in _t if k in _g}])',
+    '    _c = None',
+    'if _c is not None:',
+    '    _real = sys.stdout',
+    '    sys.stdout = io.StringIO()',   // 実行中の print を飲み込む（JSONに混ぜない）
+    '    sys.settrace(_tr)',
+    '    try:',
+    '        exec(_c, _g)',
+    '    except Exception:',
+    '        pass',
+    '    finally:',
+    '        sys.settrace(None)',
+    '        sys.stdout = _real',        // stdout を戻してから JSON を出す
+    '    _log.append(["END", {k: str(_g[k]) for k in _t if k in _g}])',
     'print(json.dumps(_log, ensure_ascii=False))'
   ].join('\n');
 }
