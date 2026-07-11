@@ -558,7 +558,8 @@ const ZTDojo = (function () {
     let hadError = false; // コード自体がエラー（構文ミス等）で落ちたか
     for (const t of curEx.tests) {
       el('zt-run-status').textContent = 'テスト実行中…';
-      const r = await Runner.run(code + '\nprint(' + t.call + ')', (m) => { el('zt-run-status').textContent = m; });
+      // runCall＝学習者が自分で書いた print(...) に惑わされず、テスト呼び出しの出力だけを取り出す
+      const r = await Runner.runCall(code, t.call, (m) => { el('zt-run-status').textContent = m; });
       const err = (r.stderr || '').indexOf('Traceback') !== -1 || (r.error && r.stdout === undefined);
       if (err) hadError = true;
       const pass = !err && !r.timeout && norm(r.stdout) === norm(t.expected);

@@ -43,5 +43,24 @@ t('文字列内の日本語は壊さない', () => {
   assert.strictEqual(Runner.fixInput(code), code); // 変えない
 });
 
+// ---- afterMarker: テスト呼び出しの出力だけを取り出す（学習者の余分なprintに惑わされない）----
+const M = Runner.RUN_MARKER;
+t('afterMarker: 学習者のprintがあってもマーカー後だけ取り出す', () => {
+  // 学習者が print(gate("secret123")) を書いていて、その後にテストのマーカー＋呼び出し
+  const stdout = '許可\n' + M + '\n許可\n';
+  assert.strictEqual(Runner.afterMarker(stdout), '許可\n');
+});
+t('afterMarker: 余分なprintが複数行でも最後の呼び出し出力だけ', () => {
+  const stdout = 'デバッグ1\nデバッグ2\n' + M + '\nTrue\n';
+  assert.strictEqual(Runner.afterMarker(stdout), 'True\n');
+});
+t('afterMarker: マーカーが無ければそのまま返す（エラー時など）', () => {
+  assert.strictEqual(Runner.afterMarker('Traceback...'), 'Traceback...');
+});
+t('afterMarker: 空の呼び出し出力（空文字返り）も扱える', () => {
+  const stdout = 'なにか\n' + M + '\n\n'; // print("") 相当
+  assert.strictEqual(Runner.afterMarker(stdout), '\n');
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

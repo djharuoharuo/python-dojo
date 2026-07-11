@@ -85,6 +85,33 @@ const Runner = {
       .replace(/（/g, '(').replace(/）/g, ')')
       .replace(/：/g, ':')
       .replace(/　/g, ' ');
+  },
+
+  // テスト判定で「関数の呼び出し結果だけ」を取り出すためのマーカー。
+  // 学習者が動作確認用に自分で print(...) を書いていても、その出力に惑わされないため
+  // （マーカーの後＝そのテスト呼び出しの出力だけを正解と比較する）。
+  RUN_MARKER: '___DOJO_TEST_MARK___',
+
+  // stdout からマーカー以降（＝テスト呼び出しの出力だけ）を取り出す純関数。テスト可能
+  afterMarker(stdout) {
+    if (typeof stdout !== 'string') return stdout;
+    var i = stdout.lastIndexOf(this.RUN_MARKER);
+    if (i < 0) return stdout; // マーカーが無い（エラーで到達しなかった等）はそのまま
+    return stdout.slice(i + this.RUN_MARKER.length).replace(/^\r?\n/, '');
+  },
+
+  // ユーザーのコードを実行し、call（例 'gate("x")'）の出力【だけ】を返す。
+  // 手順: コード → マーカーをprint → print(call)。学習者の余分なprintはマーカーの前に来るので混ざらない。
+  // 戻り値は run と同じ形 { stdout, stderr, timeout, error }（stdout は切り出し済み）
+  runCall: function (code, call, onStatus) {
+    var self = this;
+    return this.run(code + '\nprint("' + this.RUN_MARKER + '")\nprint(' + call + ')', onStatus)
+      .then(function (r) {
+        if (r && typeof r.stdout === 'string') {
+          return { stdout: self.afterMarker(r.stdout), stderr: r.stderr, timeout: r.timeout, error: r.error };
+        }
+        return r;
+      });
   }
 };
 
