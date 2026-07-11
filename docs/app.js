@@ -562,6 +562,7 @@ function openProblem(p, opts) {
   $('editor').value = p.type === 'デバッグ' && pl.buggy_code ? pl.buggy_code : '';
 
   $('run-output').hidden = true;
+  $('btn-fix-fullwidth').hidden = true;
   $('run-status').hidden = true;
   $('hint-area').hidden = true;
   $('result-area').hidden = true;
@@ -604,6 +605,15 @@ function openProblem(p, opts) {
 
 $('btn-back').onclick = () => loadHome();
 
+// 全角記号をワンタップで半角へ直す（検出時のみ表示）
+$('btn-fix-fullwidth').onclick = () => {
+  $('editor').value = Runner.fixInput($('editor').value);
+  $('btn-fix-fullwidth').hidden = true;
+  $('run-output').hidden = true;
+  saveDraft(false);
+  $('editor').focus();
+};
+
 // textarea のTabキーで2スペース字下げ（§8-2）
 $('editor').addEventListener('keydown', (e) => {
   if (e.key === 'Tab') {
@@ -628,6 +638,16 @@ $('btn-save-draft').onclick = () => saveDraft(true);
 $('btn-run').onclick = async () => {
   const code = $('editor').value;
   if (!code.trim()) { showError('コードが空です。まずはコードを書いてみよう'); return; }
+  // 全角記号ガード（スマホのキーボードが " を ” に変える等）。分かりにくいSyntaxErrorの前に案内
+  const fwWarn = Runner.checkInput(code);
+  if (fwWarn) {
+    $('run-output').textContent = '⚠️ ' + fwWarn;
+    $('run-output').className = 'has-error';
+    $('run-output').hidden = false;
+    $('btn-fix-fullwidth').hidden = false;
+    return;
+  }
+  $('btn-fix-fullwidth').hidden = true;
   $('btn-run').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '準備中…';

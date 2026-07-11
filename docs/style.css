@@ -727,3 +727,7 @@ button:disabled { opacity: 0.35; }
 .cap-commit { color: var(--muted); font-size: 0.82rem; font-family: monospace; margin-bottom: 8px;
   overflow-wrap: anywhere; }
 .cap-toggle { margin-bottom: 6px; }
+
+/* ---- 全角記号の警告（スマホのキーボードが " を ” に変える罠） ---- */
+.zt-fw-warn { white-space: pre-wrap; }
+#btn-fix-fullwidth { display: block; margin: 8px 0; }
