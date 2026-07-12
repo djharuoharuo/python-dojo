@@ -1060,7 +1060,11 @@ async function setupTraceTable(pl) {
     let timeline = [];
     try { timeline = JSON.parse((r.stdout || '').trim()); } catch (e) { timeline = []; }
     if (!Array.isArray(timeline) || timeline.length === 0) {
-      $('tt-status').textContent = 'この問題の準備に失敗しました。[← ホーム]から別の問題へ。';
+      // 原因を具体的に示し、壊れた問題は1タップで捨てられるようにする（未回答のまま永久に居座らせない）
+      const reason = r.error ? r.error
+        : r.timeout ? '実行が5秒を超えました'
+        : 'この問題のコードが実行できませんでした（生成時の不備）';
+      showTraceSetupFailure(reason);
       return;
     }
     renderTraceTable(code, vars, timeline);
@@ -1068,8 +1072,31 @@ async function setupTraceTable(pl) {
     $('btn-tt-check').hidden = false;
     $('btn-tt-check').disabled = false;
   } catch (e) {
-    $('tt-status').textContent = 'エラー: ' + e.message;
+    showTraceSetupFailure('エラー: ' + e.message);
   }
+}
+
+// トレース準備失敗：理由＋「この問題を捨てて次へ」ボタン。
+// 壊れた問題を破棄(discardProblem)すればホームから消え、同じ失敗を二度と踏まない
+function showTraceSetupFailure(reason) {
+  $('tt-status').hidden = false;
+  $('tt-status').textContent = '準備に失敗: ' + reason;
+  const box = $('tracetable');
+  box.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.className = 'btn-primary';
+  btn.textContent = '🗑 この問題をやめて次へ（記録には残りません）';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      await api('discardProblem', { problem_id: state.current.problem_id });
+    } catch (e) {
+      showError(e.message); // オフライン等。次回また捨てられる
+    }
+    clearDraft(state.current.problem_id);
+    loadHome();
+  };
+  box.appendChild(btn);
 }
 function renderTraceTable(code, vars, timeline) {
   const codeLines = code.split('\n');

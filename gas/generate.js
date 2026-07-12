@@ -405,6 +405,10 @@ function validateGenerated_(json, specs) {
     if (s.type === '予測' || s.type === '説明' || s.type === '和訳' || s.type === 'トレース' || s.type === '並べ替え' || s.type === '穴埋め') {
       // 読む/並べる/穴埋め段：完成コード(code_to_read)が必須。example_call は使わない
       if (typeof p.code_to_read !== 'string' || !p.code_to_read) return null;
+      // 実行できないコードを保存しない（保存すると未回答のままホームに永久に居座る罠になる）：
+      // input() はPyodideで実行不可、全角の引用符/括弧/コロンは compile 失敗の元。混入は作り直し
+      if (/\binput\s*\(/.test(p.code_to_read)) return null;
+      if (/[“”‘’（）：]/.test(p.code_to_read)) return null;
       // トレースは追跡する変数名(trace_vars)も必須
       if (s.type === 'トレース' && (!Array.isArray(p.trace_vars) || p.trace_vars.length < 1)) return null;
       // 穴埋めは空欄の答え(blanks)と空欄マーカー ___n___ が必須
@@ -423,6 +427,8 @@ function validateGenerated_(json, specs) {
     }
     if (typeof p.expected_output !== 'string' || !p.expected_output) return null;
     if (s.type === 'デバッグ' && (typeof p.buggy_code !== 'string' || !p.buggy_code)) return null;
+    // デバッグ問題のバグ入りコードにも input()（実行不可）は許さない（仕込むバグは指定パターンのみ）
+    if (p.buggy_code && /\binput\s*\(/.test(p.buggy_code)) return null;
     if (s.type === '組む') {
       // 仕様＋判定テストが要る（完成コードは出さない＝白紙で書かせる §1）
       if (typeof p.function_name !== 'string' || !p.function_name) return null;

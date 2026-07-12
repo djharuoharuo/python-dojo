@@ -40,7 +40,8 @@ function handleRequest_(e) {
     // capture/commitProblems=書き込み、captureCandidates=LLM予算消費（学習キャプチャ §1,§2）
     if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' ||
         action === 'ask' || action === 'hint' || action === 'saveDraft' ||
-        action === 'capture' || action === 'captureCandidates' || action === 'commitProblems') {
+        action === 'capture' || action === 'captureCandidates' || action === 'commitProblems' ||
+        action === 'discardProblem') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
@@ -49,6 +50,7 @@ function handleRequest_(e) {
         if (action === 'generate') return actionGenerate_(body);
         if (action === 'grade') return actionGrade_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
+        if (action === 'discardProblem') return actionDiscardProblem_(body);
         if (action === 'ask') return actionAsk_(body);
         if (action === 'hint') return actionHint_(body);
         if (action === 'saveDraft') return actionSaveDraft_(body);
@@ -152,6 +154,20 @@ function attemptDays_() {
     if (a.timestamp) days[a.timestamp.slice(0, 10)] = true;
   });
   return Object.keys(days);
+}
+
+// ---------------------------------------------------------------------
+// discardProblem — 壊れた問題を1タップで捨てる（学習を永久に詰まらせない）。
+// 生成された問題のコードが実行できない等でその問題が進められない時、status='破棄' にして
+// ホームの「今日の問題」から消す。attempts には書かない＝FSRS・昇級・ミス集計に一切影響しない。
+// ---------------------------------------------------------------------
+function actionDiscardProblem_(body) {
+  var problemId = String(body.problem_id || '');
+  if (!problemId) return { error: 'bad_request', message: 'problem_id がありません。ホームからやり直してください' };
+  if (!updateRowWhere_('problems', 'problem_id', problemId, { status: '破棄' })) {
+    return { error: 'not_found', message: '対象の問題が見つかりません。ホームを再読み込みしてください' };
+  }
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------
