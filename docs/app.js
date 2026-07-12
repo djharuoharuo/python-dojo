@@ -1052,6 +1052,19 @@ function buildTraceHarness(code, vars) {
     'print(json.dumps(_log, ensure_ascii=False))'
   ].join('\n');
 }
+// sys.settrace の line イベントは「この行を実行する“前”」の状態を返す。そのままだと
+// 代入文の行が代入“前”の値になり（例:「max_bpm = 0」の行がmax_bpm未定義のまま）、
+// 一般的なトレース表・PythonTutor等の慣習（「この行を実行した“後”」を見せる）や初学者の
+// 直感と食い違い、正しい答えが不正解にされる（§2の精神：見た目の正しさより実際の学びやすさ）。
+// 各行の値を「1つ後のイベントの値」に差し替える（最後の行=END行はそのまま最終状態）。純関数
+function shiftTraceTimeline(timeline) {
+  if (!Array.isArray(timeline) || timeline.length < 2) return timeline;
+  return timeline.map((entry, i) => {
+    if (i + 1 < timeline.length) return [entry[0], timeline[i + 1][1]];
+    return entry; // 最後の要素（END行）はそのまま
+  });
+}
+
 async function setupTraceTable(pl) {
   const code = pl.code_to_read || '';
   const vars = (pl.trace_vars || []).filter((v) => typeof v === 'string' && v);
@@ -1059,6 +1072,7 @@ async function setupTraceTable(pl) {
     const r = await Runner.run(buildTraceHarness(code, vars), (msg) => { $('tt-status').textContent = msg; });
     let timeline = [];
     try { timeline = JSON.parse((r.stdout || '').trim()); } catch (e) { timeline = []; }
+    timeline = shiftTraceTimeline(timeline);
     if (!Array.isArray(timeline) || timeline.length === 0) {
       // 原因を具体的に示し、壊れた問題は1タップで捨てられるようにする（未回答のまま永久に居座らせない）
       const reason = r.error ? r.error
