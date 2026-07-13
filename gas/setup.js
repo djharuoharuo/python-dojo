@@ -231,7 +231,10 @@ function configDefaults_() {
     // 🏗 ビルド日（週1回、ドリルの代わりに卒業制作を実リポジトリで1歩進める日）。0=日曜…6=土曜
     ['build_day', 6],
     // 毎朝の自動プリ生成を走らせる時間帯（時・0〜23）。変更後は setupMorningTrigger を再実行
-    ['pregen_hour', 6]
+    ['pregen_hour', 6],
+    // 速さ優先のLLMチェーン（ヒント・自由質問・一言提案・寛容採点で使用 §19）。
+    // 軽量モデルを先頭に。モデル名の更新はこのセルだけ（ハードコード禁止 §6）
+    ['model_chain_fast', 'gemini-2.5-flash-lite,gemini-2.5-flash']
   ];
 }
 

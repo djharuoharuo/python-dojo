@@ -35,9 +35,13 @@ function consumeBudget_() {
 // 戻り値: { json: パース済みオブジェクト, model_used: 実際に使ったモデル名 }
 // ---------------------------------------------------------------------
 function callGemini_(opts) {
-  // opts: { system, user, schema, temperature }
+  // opts: { system, user, schema, temperature, fast }
+  // fast=true はヒント・自由質問・一言提案など「短くて速さ優先」の用途。軽量モデルの
+  // チェーン（config: model_chain_fast）を使い数秒速くする。問題生成・フル解説は品質優先で通常チェーン
   consumeBudget_();
-  var chain = String(getConf_('model_chain', 'gemini-2.5-flash,gemini-2.5-flash-lite'))
+  var chain = (opts.fast
+    ? String(getConf_('model_chain_fast', 'gemini-2.5-flash-lite,gemini-2.5-flash'))
+    : String(getConf_('model_chain', 'gemini-2.5-flash,gemini-2.5-flash-lite')))
     .split(',').map(function (s) { return s.trim(); }).filter(String);
   var lastError = null;
 
@@ -70,7 +74,9 @@ function callGemini_(opts) {
       if (code === 200) {
         var parsed = parseGeminiResponse_(res.getContentText());
         if (parsed !== null) {
-          recordModelUsed_(model, chain[0]);
+          // fastチェーンの先頭が普通に使えた時は記録しない：通常チェーンと交互に使うと
+          // model_last_used が毎回書き換わり、無駄なシート書き込み（数秒）が増えるため（§19）
+          if (!opts.fast || model !== chain[0]) recordModelUsed_(model, chain[0]);
           return { json: parsed, model_used: model };
         }
         lastError = new Error('Geminiの応答JSONを解釈できませんでした');

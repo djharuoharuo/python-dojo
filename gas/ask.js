@@ -17,14 +17,22 @@ function actionAsk_(body) {
     return { error: 'bad_request', message: '質問やコードが長すぎます。短くしてからもう一度お試しください' };
   }
 
-  var prow = readRows_('problems').filter(function (p) { return p.problem_id === problemId; })[0];
-  if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
-  var payload = JSON.parse(prow.payload_json);
+  // 高速化（§19）：クライアントが問題文を同送してきたらシートの全読みを省く（1〜2秒短縮）。
+  // 回答の材料にしか使わないので正誤判定には影響しない。無ければ従来どおりシートから引く
+  var payload = clientPayload_(body);
+  var conceptId = payload ? payload.concept_id : '';
+  if (!payload) {
+    var prow = readRows_('problems').filter(function (p) { return p.problem_id === problemId; })[0];
+    if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
+    payload = JSON.parse(prow.payload_json);
+    conceptId = prow.concept_id;
+  }
 
   // callGemini_ が予算消費・モデルフォールバックを担う（落ちたら llm_failed が上がる）
   var res = callGemini_({
     system: askSystemPrompt_(),
     user: askUserPrompt_(payload, code, question),
+    fast: true, // 自由質問は速さ優先＝軽量モデルチェーン（§19）
     schema: { type: 'OBJECT', properties: { answer: { type: 'STRING' } }, required: ['answer'] },
     temperature: 0.3
   });
@@ -38,7 +46,7 @@ function actionAsk_(body) {
       ask_id: Utilities.getUuid(),
       timestamp: nowIso_(),
       problem_id: problemId,
-      concept_id: prow.concept_id,
+      concept_id: conceptId,
       question: question,
       answer: answer,
       model_used: res.model_used
