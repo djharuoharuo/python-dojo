@@ -343,7 +343,8 @@ function correctSuggestion_(payload, code) {
       user: '# 問題\n' + payload.statement + '\n# 正解できたコード\n' + code +
         '\n\nこのコードを、より良く/簡潔にする一言の提案が1つあれば。無ければ空文字。',
       schema: { type: 'OBJECT', properties: { suggestion: { type: 'STRING' } }, required: ['suggestion'] },
-      temperature: 0.2
+      temperature: 0.2,
+      fast: true // 一言提案は速さ優先（正解の確定は既に済んでいる §19）
     });
     return res.json && typeof res.json.suggestion === 'string' ? res.json.suggestion.trim() : '';
   } catch (e) {
@@ -373,7 +374,8 @@ function gradeEipe_(payload, explanationText) {
         },
         required: ['ok', 'model_answer', 'feedback']
       },
-      temperature: 0.2
+      temperature: 0.2,
+      fast: true // 寛容採点は速さ優先（§19）
     });
     var j = res.json || {};
     return {
@@ -415,7 +417,8 @@ function gradeWayaku_(payload, lineDescs) {
         },
         required: ['lines', 'overall_ok']
       },
-      temperature: 0.2
+      temperature: 0.2,
+      fast: true // 寛容採点は速さ優先（§19）
     });
     var j = res.json || {};
     var arr = Array.isArray(j.lines) ? j.lines : [];
@@ -516,7 +519,8 @@ function askHints_(payload, code, stdout, stderr) {
         '\n\nこの解答は不正解だった。答え（正解コード）は絶対に明かさず、本人が自力で気づける誘導質問を最大2つ返して。' +
         'stderrにTracebackがあれば「最後の行のエラー名と行番号から読む」という読み方のヒントを1つ含めて。',
       schema: { type: 'OBJECT', properties: { hints: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['hints'] },
-      temperature: 0.2
+      temperature: 0.2,
+      fast: true // 採点ヒント段階は速さ優先（正誤はコードが確定済み §19）
     });
     var hints = res.json && Array.isArray(res.json.hints)
       ? res.json.hints.filter(function (h) { return typeof h === 'string' && h; }).slice(0, 2)

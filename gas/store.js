@@ -71,8 +71,15 @@ function cellToString_(v) {
   return String(v);
 }
 
+// 実行内キャッシュ（§19 高速化）：1リクエスト中に同じシートを何度も全読みしない。
+// 以前は設定シートだけで1リクエスト5〜6回の全読みが発生し、体感の遅さの主因の一つだった。
+// GASは1リクエスト＝1実行なのでキャッシュは実行内で完結し、リクエスト間で古い値を見る心配はない。
+// 書き込み（append/update/削除）でそのシートのキャッシュを捨てる＝実行内でも常に正しい値を読む
+var ROWS_CACHE_ = {};
+
 // タブ全体を「ヘッダー名→値（文字列）」のオブジェクト配列で読む
 function readRows_(name) {
+  if (ROWS_CACHE_[name]) return ROWS_CACHE_[name];
   var sheet = getSheet_(name);
   var values = sheet.getDataRange().getValues();
   var headers = SHEET_HEADERS[name];
@@ -85,6 +92,7 @@ function readRows_(name) {
     row._rowIndex = i + 1; // 更新時に使うシート上の行番号（1始まり）
     rows.push(row);
   }
+  ROWS_CACHE_[name] = rows;
   return rows;
 }
 
@@ -106,6 +114,7 @@ function appendRowObj_(name, obj) {
     return obj[h] !== undefined && obj[h] !== null ? obj[h] : '';
   });
   getSheet_(name).appendRow(row);
+  delete ROWS_CACHE_[name]; // 書いたら実行内キャッシュを捨てる（次の読みで反映）
 }
 
 // keyCol = keyVal の最初の行に updates（列名→値）を適用する。見つかれば true
@@ -120,6 +129,7 @@ function updateRowWhere_(name, keyCol, keyVal, updates) {
         if (colIndex === -1) throw new Error('不明な列: ' + name + '.' + col);
         sheet.getRange(rows[i]._rowIndex, colIndex + 1).setValue(updates[col]);
       }
+      delete ROWS_CACHE_[name]; // 書いたら実行内キャッシュを捨てる（次の読みで反映）
       return true;
     }
   }
@@ -195,4 +205,24 @@ function topMistakes_() {
   return readRows_('mistakes').sort(function (a, b) {
     return Number(b.count || 0) - Number(a.count || 0);
   });
+}
+
+// ---------------------------------------------------------------------
+// hint/ask 高速化用（§19）：クライアントが同送した問題文（payload）を検証して返す。
+// アプリは開いている問題の本文を既に持っているので、同送してもらえばシートの全読みを省ける。
+// ヒント生成の【材料】にしか使わない（正誤判定には一切使わない）ため、長さ・型の検証で足りる（§9）。
+// 無ければ null（呼び出し側が従来どおりシートから引く＝後方互換）
+// ---------------------------------------------------------------------
+function clientPayload_(body) {
+  var p = body && body.payload;
+  if (!p || typeof p !== 'object' || typeof p.statement !== 'string' || !p.statement) return null;
+  return {
+    statement: String(p.statement).slice(0, 2000),
+    conditions: Array.isArray(p.conditions)
+      ? p.conditions.slice(0, 10).map(function (c) { return String(c).slice(0, 200); })
+      : [],
+    example_call: String(p.example_call || '').slice(0, 500),
+    expected_output: String(p.expected_output || '').slice(0, 1000),
+    concept_id: String(p.concept_id || '').slice(0, 100)
+  };
 }

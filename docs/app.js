@@ -120,6 +120,30 @@ function flashDraftSaved() {
 // ---------------------------------------------------------------------
 // バナー（通知・エラー）
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// 経過秒数つきステータス（「動いているのか分からない」対策 §19）。
+// AI待ちの間、1秒ごとに経過時間を出して「生きている」ことを見せる
+// ---------------------------------------------------------------------
+const tickers = {};
+function startTicker(id, label) {
+  const el = $(id);
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = label + '…';
+  let sec = 0;
+  clearInterval(tickers[id]);
+  tickers[id] = setInterval(() => {
+    sec++;
+    el.textContent = `${label}…（${sec}秒経過）`;
+  }, 1000);
+}
+function stopTicker(id) {
+  clearInterval(tickers[id]);
+  delete tickers[id];
+  const el = $(id);
+  if (el) el.hidden = true;
+}
+
 function showError(message) {
   $('error-text').textContent = message;
   $('error-banner').hidden = false;
@@ -213,8 +237,7 @@ function renderProblemList() {
 
 $('btn-generate').onclick = async () => {
   $('btn-generate').disabled = true;
-  $('home-loading').textContent = '問題を生成中…（30秒ほどかかることがあります）';
-  $('home-loading').hidden = false;
+  startTicker('home-loading', '🤖 AIが今日の問題を作成中（通常20〜40秒）');
   try {
     const data = await api('generate', {});
     state.problems = data.problems;
@@ -224,7 +247,7 @@ $('btn-generate').onclick = async () => {
     $('btn-generate').textContent = 'もう一度';
   } finally {
     $('btn-generate').disabled = false;
-    $('home-loading').hidden = true;
+    stopTicker('home-loading');
     $('home-loading').textContent = '読み込み中…';
   }
 };
@@ -1278,8 +1301,7 @@ async function grade(stage) {
   if (!state.ran) { showError('先に[▶ 実行]してから採点してください'); return; }
   state.gradedCode = $('editor').value; // 採点したコードを保持（結果で正解と見比べる）
   $('btn-grade').disabled = true;
-  $('run-status').hidden = false;
-  $('run-status').textContent = '採点中…';
+  startTicker('run-status', '🤖 AIが採点と解説を作成中');
   try {
     const res = await api('grade', {
       problem_id: state.current.problem_id,
@@ -1303,7 +1325,7 @@ async function grade(stage) {
     showError(e.message);
     $('btn-grade').disabled = false;
   } finally {
-    $('run-status').hidden = true;
+    stopTicker('run-status');
   }
 }
 
@@ -1322,16 +1344,29 @@ function updateHintButtonLabel() {
 
 $('btn-hint').onclick = requestHint;
 
+// ヒント/質問はサーバでの問題シート全読みを省くため、開いている問題文を一緒に送る（§19 高速化）。
+// ヒントの材料にしか使われない（正誤判定はサーバ保存の問題文が正のまま）
+function promptPayload() {
+  const p = (state.current && state.current.payload) || {};
+  return {
+    statement: p.statement || '',
+    conditions: p.conditions || [],
+    example_call: p.example_call || '',
+    expected_output: p.expected_output || '',
+    concept_id: p.concept_id || ''
+  };
+}
+
 async function requestHint() {
   const level = Math.min(state.hintLevel + 1, 3); // 押すほど深く。穴埋め(3)で頭打ち
   $('btn-hint').disabled = true;
-  $('ask-status').hidden = false;
-  $('ask-status').textContent = 'ヒントを考えています…';
+  startTicker('ask-status', '💡 AIがヒントを考え中');
   try {
     const res = await api('hint', {
       problem_id: state.current.problem_id,
       code: $('editor').value,
-      level
+      level,
+      payload: promptPayload() // 問題文を同送＝サーバのシート読みを省いて高速化（§19）
     });
     state.hintLevel = level;
     const h = { hint: res.hint, code: res.code || null, steps: res.steps || null };
@@ -1344,7 +1379,7 @@ async function requestHint() {
     showError(e.message);     // 予算超過などは日本語メッセージがそのまま出る
   } finally {
     $('btn-hint').disabled = false;
-    $('ask-status').hidden = true;
+    stopTicker('ask-status');
   }
 }
 
@@ -1383,13 +1418,13 @@ async function askTutor(question) {
   if (!question) { showError('質問を入力してから送ってください'); return; }
   $('btn-hint').disabled = true;
   $('btn-ask').disabled = true;
-  $('ask-status').hidden = false;
-  $('ask-status').textContent = '先生に聞いています…';
+  startTicker('ask-status', '❓ AIが回答を考え中');
   try {
     const res = await api('ask', {
       problem_id: state.current.problem_id,
       code: $('editor').value,
-      question
+      question,
+      payload: promptPayload() // 問題文を同送＝サーバのシート読みを省いて高速化（§19）
     });
     state.asks.push({ question, answer: res.answer });
     renderAsk(question, res.answer, true);
@@ -1401,7 +1436,7 @@ async function askTutor(question) {
   } finally {
     $('btn-hint').disabled = false;
     $('btn-ask').disabled = false;
-    $('ask-status').hidden = true;
+    stopTicker('ask-status');
   }
 }
 

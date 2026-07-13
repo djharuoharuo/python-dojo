@@ -20,13 +20,19 @@ function actionHint_(body) {
   if (!problemId) return { error: 'bad_request', message: 'problem_id がありません。ホームからやり直してください' };
   if (code.length > 20000) return { error: 'bad_request', message: 'コードが長すぎます。短くしてからお試しください' };
 
-  var prow = readRows_('problems').filter(function (p) { return p.problem_id === problemId; })[0];
-  if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
-  var payload = JSON.parse(prow.payload_json);
+  // 高速化（§19）：クライアントが問題文を同送してきたらシートの全読みを省く（1〜2秒短縮）。
+  // ヒントの材料にしか使わないので正誤判定には影響しない。無ければ従来どおりシートから引く
+  var payload = clientPayload_(body);
+  if (!payload) {
+    var prow = readRows_('problems').filter(function (p) { return p.problem_id === problemId; })[0];
+    if (!prow) return { error: 'not_found', message: '問題が見つかりません。ホームを再読み込みしてください' };
+    payload = JSON.parse(prow.payload_json);
+  }
 
   var res = callGemini_({
     system: hintSystemPrompt_(level),
     user: hintUserPrompt_(payload, code, level),
+    fast: true, // ヒントは速さ優先＝軽量モデルチェーン（§19）
     schema: {
       type: 'OBJECT',
       properties: {
