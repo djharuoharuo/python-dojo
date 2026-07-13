@@ -238,6 +238,21 @@ function normalizedEquals_(a, b) {
 // full確定時のコード側処理（§7: attempts追記・FSRS・昇級・mistakes）
 // ---------------------------------------------------------------------
 function finalizeAttempt_(prow, payload, r) {
+  // 書き込みだけを短くロックする（§5）。LLM呼び出し（ヒント・解説・提案）は呼び出し元で
+  // ロックの外で済ませてある＝LLM待ちの10〜30秒間、全操作が「別の処理が実行中」で
+  // 詰まっていた問題の対策。ここは数秒で終わるシート書き込みのみ
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30 * 1000)) {
+    return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
+  }
+  try {
+    return finalizeAttemptLocked_(prow, payload, r);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function finalizeAttemptLocked_(prow, payload, r) {
   var attemptId = Utilities.getUuid();
   appendRowObj_('attempts', {
     attempt_id: attemptId,

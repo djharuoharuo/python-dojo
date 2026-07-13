@@ -35,27 +35,31 @@ function handleRequest_(e) {
     if (action === 'captureMatch') return actionCaptureMatch_(body); // §5 名寄せ（読み取りのみ・LLM不使用）
     if (action === 'clearNotice') { setConf_('model_notice', ''); setConf_('theme_notice', ''); return { ok: true }; }
 
-    // 書き込み系＋予算消費系はスクリプトロックで直列化
-    // （採番・FSRS更新の競合と、予算カウンタ llm_budget_used の競合を根絶）
-    // capture/commitProblems=書き込み、captureCandidates=LLM予算消費（学習キャプチャ §1,§2）
-    if (action === 'generate' || action === 'grade' || action === 'saveSelfNote' ||
-        action === 'ask' || action === 'hint' || action === 'saveDraft' ||
-        action === 'capture' || action === 'captureCandidates' || action === 'commitProblems' ||
-        action === 'discardProblem') {
+    // LLM呼び出し系（hint / ask / captureCandidates / grade）はロックを取らない。
+    // 以前は全actionを1本のロックで直列化していたが、LLM応答に10〜30秒かかる間
+    // 他の操作が全部「別の処理が実行中」で弾かれる主因だった。これらは
+    // 採番（last_problem_number）・FSRS・問題statusを一切書かないため直列化不要
+    // （budgetカウンタは最悪1回ぶんの数え漏れ、asksへの追記はappendRowが行単位で安全）。
+    // grade だけは書き込みがあるが、LLM解説を済ませた後の finalizeAttempt_ 内部で短くロックする
+    if (action === 'hint') return actionHint_(body);
+    if (action === 'ask') return actionAsk_(body);
+    if (action === 'captureCandidates') return actionCaptureCandidates_(body);
+    if (action === 'grade') return actionGrade_(body);
+
+    // 書き込み系はスクリプトロックで直列化（採番・状態更新の競合を根絶 §5）。
+    // どれもLLMを呼ばない、または呼んでも短い（generateのみ長いが採番があるため必須）
+    if (action === 'generate' || action === 'saveSelfNote' || action === 'saveDraft' ||
+        action === 'capture' || action === 'commitProblems' || action === 'discardProblem') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
       }
       try {
         if (action === 'generate') return actionGenerate_(body);
-        if (action === 'grade') return actionGrade_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
         if (action === 'discardProblem') return actionDiscardProblem_(body);
-        if (action === 'ask') return actionAsk_(body);
-        if (action === 'hint') return actionHint_(body);
         if (action === 'saveDraft') return actionSaveDraft_(body);
         if (action === 'capture') return actionCapture_(body);
-        if (action === 'captureCandidates') return actionCaptureCandidates_(body);
         if (action === 'commitProblems') return actionCommitProblems_(body);
       } finally {
         lock.releaseLock();

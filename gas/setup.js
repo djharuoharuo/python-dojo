@@ -229,7 +229,9 @@ function configDefaults_() {
     // 週の目標日数。「毎日」でなく「週5日でOK」＝1日切れても週目標が生きる
     ['weekly_goal_days', 5],
     // 🏗 ビルド日（週1回、ドリルの代わりに卒業制作を実リポジトリで1歩進める日）。0=日曜…6=土曜
-    ['build_day', 6]
+    ['build_day', 6],
+    // 毎朝の自動プリ生成を走らせる時間帯（時・0〜23）。変更後は setupMorningTrigger を再実行
+    ['pregen_hour', 6]
   ];
 }
 
