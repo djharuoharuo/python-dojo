@@ -425,3 +425,8 @@ v1の問題タイプは**「予測（Stage1: 出力予測/読む段）」のみ*
 - **🏗 週1ビルド日→卒業制作を実GitHubリポジトリへ**（`docs/zt.js` の「制作」タブ）：`build_day`（既定6=土曜）にホームへバナー。道場の8段と対応する**9歩のロードマップ**で卒業制作 zt-gate を本物のリポジトリとして構築（第0歩=repo作成 → 門番/テスト/PE分離/毎回検証/secretsトークン/ログ+ロック/改ざん検知 → README=800-207対応表で公開）。**自分が道場で書いたコードを自分の手で移植**＝答えを渡さず再構築が復習になる。狙いはドリル→実物の転移と就活ポートフォリオ。APIヒントは python3 検証済み。進捗は localStorage（コードの正はGitHub側）。
 
 config追加: `weekly_goal_days`(5) / `build_day`(6)。**フォールバック付きで読むため migrate 未実行でも動く**（セルを手で変えたい場合のみ migrate 推奨）。
+
+## 19. 応答速度（§5 競合制御の改定）と毎朝の自動プリ生成
+
+- **§5改定：LLM呼び出し系はロックを取らない**。以前は全actionを1本のScriptLockで直列化しており、LLM応答（10〜30秒）の間じゅう他の操作が「別の処理が実行中」で弾かれていた。`hint` / `ask` / `captureCandidates` は採番・FSRS・問題statusを書かないためロック不要（budgetカウンタは最悪1回の数え漏れ、asks追記はappendRowが行単位で安全）。`grade` はLLM解説を済ませた後の **`finalizeAttempt_` 内部だけ**短くロックする。採番がある `generate` / `commitProblems` と他の書き込み系は従来どおり直列化。
+- **毎朝の自動プリ生成**（`gas/pregen.js`・§11 P1）：GASエディタで `setupMorningTrigger` を1回実行すると、毎朝 `pregen_hour`（既定6）時台に未回答0の時だけ自動生成。解き残しがある朝は積まない（山にしない）。失敗しても手動[問題を作る]は従来どおり。**`appsscript.json` に script.scriptapp スコープを追加**（トリガー作成に必要な最小権限 §9）。
