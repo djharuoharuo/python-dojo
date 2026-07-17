@@ -14,10 +14,15 @@ function setup() {
 
   // タブ＋ヘッダー作成（列定義は store.js の SHEET_HEADERS が唯一の正）
   Object.keys(SHEET_HEADERS).forEach(function (name) {
+    var cols = SHEET_HEADERS[name].length;
     var sheet = ss.insertSheet(name);
-    sheet.getRange(1, 1, 1, SHEET_HEADERS[name].length).setValues([SHEET_HEADERS[name]]);
-    // 日付や数値文字列をSheetsに勝手に型変換させない（読み書きの揺れを防ぐ）
-    sheet.getDataRange().setNumberFormat('@');
+    sheet.getRange(1, 1, 1, cols).setValues([SHEET_HEADERS[name]]);
+    // 列全体をプレーンテキスト書式にする。目的は2つ：
+    //  ①日付/数値文字列をSheetsに勝手に型変換させない（読み書きの揺れ防止）
+    //  ②数式インジェクション対策（§9）：=/+/-/@ で始まる悪意ある文字列が書き込まれても
+    //    数式として評価されず、スプレッドシートを開いてもデータ流出しない。ヘッダー行だけでなく
+    //    データ行（getMaxRows まで）に適用するのが肝
+    sheet.getRange(1, 1, sheet.getMaxRows(), cols).setNumberFormat('@');
     sheet.setFrozenRows(1);
   });
   ss.deleteSheet(ss.getSheetByName('シート1') || ss.getSheets()[0]);
@@ -52,19 +57,17 @@ function ensureTabs_() {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sheet.getDataRange().setNumberFormat('@');
       sheet.setFrozenRows(1);
       Logger.log('タブを作成しました: ' + name);
-      return;
-    }
-
-    // 既存タブで列が足りなければヘッダーを後付け（例: attempts に feedback_json）。
-    // 既存データ行はその列が空になるだけで読み書きは壊れない
-    if (sheet.getLastColumn() < headers.length) {
+    } else if (sheet.getLastColumn() < headers.length) {
+      // 既存タブで列が足りなければヘッダーを後付け（例: attempts に feedback_json）。
+      // 既存データ行はその列が空になるだけで読み書きは壊れない
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-      sheet.getRange(1, 1, sheet.getMaxRows(), headers.length).setNumberFormat('@');
       Logger.log('列を追加しました: ' + name + '（' + headers.join(', ') + '）');
     }
+    // 全タブの列を毎回プレーンテキスト書式に統一（数式インジェクション対策 §9）。
+    // 冪等なので migrate() を1回流せば既存シートも含め全データ行が保護される
+    sheet.getRange(1, 1, sheet.getMaxRows(), headers.length).setNumberFormat('@');
   });
 }
 
