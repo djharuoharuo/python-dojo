@@ -129,17 +129,22 @@ function actionGetToday_() {
   };
 }
 
-// 「今のボトルネック」: 直近の解答（最大20件）で最も多い error_pattern を返す。
+// 「今のボトルネック」: 直近の解答で最も多い error_pattern を返す（実質ミス種別が付いた直近20件）。
 // 苦手を克服すると表示も切り替わる（通算ではなく“いまの弱点”を指すため）。
 // 直近にミスが無ければ通算トップのmistakeにフォールバック（情報を空にしない）
 function recentBottleneck_() {
-  // 練習（再挑戦）は「いまの弱点」判定に混ぜない（自分で選んだ問題なので偏る）
+  // 読む/並べる/穴埋め/組む型（予測・説明・和訳・トレース・並べ替え・組む）は正誤に関わらず
+  // error_pattern が常に「なし」で記録される（§15）。これらを含めたまま「直近20件」を取ると、
+  // 実際にミス種別が付く「書く」型の解答が薄まってしまい、いつまでも直近ミスが見つからず
+  // 通算フォールバックに落ち続ける（＝表示が実質固定される）不具合があった。
+  // ミス種別が付いた解答だけに絞ってから直近20件を見る（練習/再挑戦も除外）
   var recent = readRows_('attempts')
-    .filter(function (a) { return a.mode !== '練習'; }).slice(-20);
+    .filter(function (a) { return a.mode !== '練習' && a.error_pattern && a.error_pattern !== 'なし'; })
+    .slice(-20);
   var counts = {};
   recent.forEach(function (a) {
     var p = a.error_pattern;
-    if (p && p !== 'なし') counts[p] = (counts[p] || 0) + 1;
+    counts[p] = (counts[p] || 0) + 1;
   });
   var best = '';
   var bestN = 0;
