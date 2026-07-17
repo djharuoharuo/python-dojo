@@ -340,17 +340,17 @@ function actionCommitProblems_(body) {
     if (it.kind === 'build') {
       // 組む（白紙で書く）：フロントが reference_solution を全テストで実行し合格を確認済み（§2）。
       // 保存するのは仕様＋テストだけ。reference_solution は【保存しない】（§11 正解コードは出さない）
-      var fn = String(it.function_name || '');
-      var stmt = String(it.statement || '');
+      var fn = String(it.function_name || '').slice(0, 100);
+      var stmt = String(it.statement || '').slice(0, 2000);
       var tests = Array.isArray(it.tests) ? it.tests.filter(function (t) {
         return t && typeof t.call === 'string' && t.call.trim() && typeof t.expected === 'string' &&
           captureCodeAllowed_(t.call); // テスト呼び出しにも禁止要素を許さない
-      }).map(function (t) { return { call: String(t.call), expected: String(t.expected) }; }) : [];
+      }).slice(0, 6).map(function (t) { return { call: String(t.call).slice(0, 300), expected: String(t.expected).slice(0, 1000) }; }) : [];
       if (!fn || !stmt || tests.length < 1) return;
       num++;
       var ex = tests[0];
       store_({
-        number: num, title: String(it.title || concept.name), concept_id: conceptId, type: '組む',
+        number: num, title: String(it.title || concept.name).slice(0, 200), concept_id: conceptId, type: '組む',
         statement: stmt,
         conditions: Array.isArray(it.conditions) ? it.conditions.filter(function (x) { return typeof x === 'string'; }) : [],
         example_call: 'print(' + ex.call + ')', expected_output: ex.expected,
@@ -361,14 +361,14 @@ function actionCommitProblems_(body) {
     }
 
     if (it.kind !== 'predict') return;
-    var code = String(it.code_to_read || '');
-    var expected = String(it.expected_output || '');
+    var code = String(it.code_to_read || '').slice(0, 5000);
+    var expected = String(it.expected_output || '').slice(0, 3000);
     // 検証ゲート（§2）：コードと「実行で得た出力」が無いものは捨てる。出力が空＝予測問題として無意味
     if (!code || !expected) return;
     if (!captureCodeAllowed_(code)) return; // サーバ側でも禁止要素を再チェック
     num++;
     store_({
-      number: num, title: String(it.title || concept.name), concept_id: conceptId, type: '予測',
+      number: num, title: String(it.title || concept.name).slice(0, 200), concept_id: conceptId, type: '予測',
       statement: '次のコードの出力を予測してください（読んで考える練習です）',
       conditions: [], example_call: '', expected_output: expected,
       buggy_code: null, code_to_read: code, function_name: null, trace_vars: null,
