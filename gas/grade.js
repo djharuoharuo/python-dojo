@@ -306,12 +306,17 @@ function finalizeAttemptLocked_(prow, payload, r) {
 
   if (r.errorPattern && r.errorPattern !== 'なし') bumpMistake_(r.errorPattern);
 
-  // 間違えた問題は数日後に類題で再出題するキューへ（テスト効果 §6）。
+  // 「間違えた問題」と「ヒントを重ねてやっと正解した問題」は、数日後に類題で再出題する
+  // キューへ（テスト効果 §6）。ヒントあり正解は本人の実感どおり「まだ自力では書けていない」
+  // 状態なので、間隔をあけて似た問題で自力想起を試させる（massed practiceでなくspacedで）。
   // revengeタブ未作成（migrate前）でも採点は止めない。
-  // ※ 予測（読む段）の外しは「書く」リベンジに積まない（種別がちぐはぐになるため）
+  // ※ 予測など読む段(isTrace)の外しは「書く」リベンジに積まない（種別がちぐはぐになるため）
+  // ※ 穴埋め(Stage0)の hintUsed=true は「新規概念の足場」という構造上のもの（本人が助けを
+  //   求めた訳ではない）ので対象外。以後の通常ローテーションで自然に再登場する
   // ※ 学習キャプチャ(source=capture)の問題も積まない＝リベンジの類題は未検証generateで作られるため、
   //   §2 検証ゲートを破ってしまう。capture概念の再出題は検証済みパイプライン（もう一度作る）に任せる
-  if (r.verdict !== '正解' && !r.isTrace && prow.source !== 'capture') {
+  var needsRevenge = (r.verdict !== '正解') || (r.hintUsed && prow.type !== '穴埋め');
+  if (needsRevenge && !r.isTrace && prow.source !== 'capture') {
     try { enqueueRevenge_(prow.problem_id, prow.concept_id); } catch (e) { /* 後でmigrateすれば有効に */ }
   }
 
