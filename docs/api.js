@@ -12,6 +12,15 @@ class ApiError extends Error {
   }
 }
 
+// GASのWeb Appは、リクエストが doPost() に届く前にGoogle側のインフラで
+// 稀に 404/5xx を返すことがある（Googleのコミュニティでも既知・doPostのログにすら残らない）。
+// これは「たまに動く」の正体＝リトライすればほぼ直る一時的な失敗。指数バックオフで自動再試行する。
+// 一方、200で返ってきた {error:...}（予算超過・不正な入力など）はアプリの正当な応答なので
+// リトライしない（サーバ側で既に処理済み＝再送すると二重登録の恐れがあるものもあるため）。
+const RETRYABLE_HTTP = new Set([404, 500, 502, 503, 504]);
+const MAX_RETRIES = 3;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function api(action, params) {
   // config.js（GitHub Actionsが生成）が無いと何もできない。先に明示する
   if (typeof CONFIG === 'undefined' || !CONFIG.GAS_URL || !CONFIG.APP_TOKEN) {
@@ -21,29 +30,41 @@ async function api(action, params) {
     throw new ApiError('offline', 'ネット接続がありません。[実行]だけはオフラインでも使えます。採点・出題は接続後にどうぞ');
   }
 
-  let res;
-  try {
-    res = await fetch(CONFIG.GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(Object.assign({ token: CONFIG.APP_TOKEN, action }, params || {}))
-    });
-  } catch (e) {
-    throw new ApiError('network', '通信に失敗しました。電波の良い場所でもう一度お試しください');
-  }
-  if (!res.ok) {
-    throw new ApiError('http', 'サーバが応答しません（HTTP ' + res.status + '）。少し待ってからもう一度お試しください');
-  }
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res;
+    try {
+      res = await fetch(CONFIG.GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(Object.assign({ token: CONFIG.APP_TOKEN, action }, params || {}))
+      });
+    } catch (e) {
+      if (attempt < MAX_RETRIES) { await sleep(700 * Math.pow(2, attempt)); continue; }
+      throw new ApiError('network', '通信に失敗しました。電波の良い場所でもう一度お試しください');
+    }
+    if (!res.ok) {
+      if (RETRYABLE_HTTP.has(res.status) && attempt < MAX_RETRIES) {
+        await sleep(700 * Math.pow(2, attempt));
+        continue;
+      }
+      throw new ApiError('http', 'サーバが応答しません（HTTP ' + res.status + '）。少し待ってからもう一度お試しください');
+    }
 
-  let json;
-  try {
-    json = await res.json();
-  } catch (e) {
-    throw new ApiError('parse', 'サーバ応答を読めませんでした。GASのデプロイ設定（アクセス: 全員）を確認してください');
+    let json;
+    try {
+      json = await res.json();
+    } catch (e) {
+      throw new ApiError('parse', 'サーバ応答を読めませんでした。GASのデプロイ設定（アクセス: 全員）を確認してください');
+    }
+    // GASは失敗を {error, message} で返す（§5）。ここで例外に変換して一元処理（リトライしない）
+    if (json && json.error) {
+      throw new ApiError(json.error, json.message || 'エラーが発生しました（' + json.error + '）');
+    }
+    return json;
   }
-  // GASは失敗を {error, message} で返す（§5）。ここで例外に変換して一元処理
-  if (json && json.error) {
-    throw new ApiError(json.error, json.message || 'エラーが発生しました（' + json.error + '）');
-  }
-  return json;
+}
+
+// Nodeスモークテスト用（ブラウザでは無視される）
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { api: api, ApiError: ApiError, RETRYABLE_HTTP: RETRYABLE_HTTP, MAX_RETRIES: MAX_RETRIES };
 }
