@@ -149,5 +149,33 @@ t('clampCount_ は0〜4に丸め、不正値は既定値に戻す', () => {
   assert.strictEqual(cap.clampCount_(undefined, 3), 3);
 });
 
+// ---- rejectedForNondeterminism_: 「再試行しても無駄」を正しく見分ける ----
+t('全候補が禁止要素入り → true（再試行しても無駄と判定）', () => {
+  const json = { candidates: [
+    { kind: 'predict', code_to_read: 'import random\nprint(random.randint(1, 9))' },
+    { kind: 'predict', code_to_read: 'name = input()\nprint(name)' }
+  ] };
+  assert.strictEqual(cap.rejectedForNondeterminism_(json), true);
+});
+t('決定的なコードが1つでもある → false（別の理由で弾かれている）', () => {
+  const json = { candidates: [
+    { kind: 'predict', code_to_read: 'import random\nprint(random.randint(1, 9))' },
+    { kind: 'predict', code_to_read: 'print(1 + 1)' }
+  ] };
+  assert.strictEqual(cap.rejectedForNondeterminism_(json), false);
+});
+t('build候補の参照解が禁止要素入りでも検出する', () => {
+  const json = { candidates: [
+    { kind: 'build', reference_solution: 'import datetime\ndef f():\n    return datetime.datetime.now()' }
+  ] };
+  assert.strictEqual(cap.rejectedForNondeterminism_(json), true);
+});
+t('空・壊れた応答 → false（スキーマ外れは通常のgenerate_failed扱い）', () => {
+  assert.strictEqual(cap.rejectedForNondeterminism_(null), false);
+  assert.strictEqual(cap.rejectedForNondeterminism_({}), false);
+  assert.strictEqual(cap.rejectedForNondeterminism_({ candidates: [] }), false);
+  assert.strictEqual(cap.rejectedForNondeterminism_({ candidates: [{ kind: 'predict', title: 'x' }] }), false);
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
