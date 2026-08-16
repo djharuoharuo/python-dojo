@@ -169,17 +169,51 @@ function actionCaptureCandidates_(body) {
   var nBuild = clampCount_(body.build_count, getConf_('capture_build_count', 1));
   if (nPredict + nBuild === 0) nPredict = 1;
 
-  var res = callGemini_({
-    system: captureSystemPrompt_(),
-    user: captureUserPrompt_(conceptName, selfExp, nPredict, nBuild),
-    schema: captureSchema_(),
-    temperature: 0.7
-  });
-  var candidates = validateCaptureCandidates_(res.json, conceptId, conceptName);
+  var candidates = [];
+  var modelUsed = '';
+  var lastJson = null;
+  // LLMは気まぐれにスキーマから外れた応答を返すことがある。通常の出題(actionGenerate_)と同様に
+  // 2回まで作り直す（1回きりだと単発の失敗がそのままユーザーのエラーになっていた）
+  for (var attempt = 0; attempt < 2 && candidates.length === 0; attempt++) {
+    var res = callGemini_({
+      system: captureSystemPrompt_(),
+      user: captureUserPrompt_(conceptName, selfExp, nPredict, nBuild),
+      schema: captureSchema_(),
+      temperature: 0.7
+    });
+    modelUsed = res.model_used;
+    lastJson = res.json;
+    candidates = validateCaptureCandidates_(res.json, conceptId, conceptName);
+  }
   if (!candidates.length) {
+    // 全部が「非決定的な要素」で弾かれたなら、何度やっても同じ結果になる。
+    // 「もう一度お試しください」は嘘になるので、理由を正直に伝える（§2の検証ゲートは緩めない）
+    if (rejectedForNondeterminism_(lastJson)) {
+      return {
+        error: 'capture_undeterministic',
+        message: '「' + conceptName + '」は自動で問題を作れませんでした。入力待ち・乱数・日時・ファイル操作を含む話題は、' +
+          'ブラウザ内で答え合わせ（実行して正解を確定）できないためです。概念は復習キューに登録済みなので、復習自体は回ります'
+      };
+    }
     return { error: 'generate_failed', message: '問題のたねを作れませんでした。もう一度お試しください' };
   }
-  return { candidates: candidates, model_used: res.model_used };
+  return { candidates: candidates, model_used: modelUsed };
+}
+
+// 生成された“たね”が【非決定的な要素（§2で禁止）を含むせいで全部弾かれた】のかを判定する。
+// 真なら再試行しても同じ結果＝ユーザーに正直に伝えるための材料。純関数＝Nodeテスト可能
+function rejectedForNondeterminism_(json) {
+  if (!json || !Array.isArray(json.candidates) || !json.candidates.length) return false;
+  var hadCode = false;
+  for (var i = 0; i < json.candidates.length; i++) {
+    var c = json.candidates[i] || {};
+    var code = typeof c.code_to_read === 'string' && c.code_to_read.trim() ? c.code_to_read
+      : (typeof c.reference_solution === 'string' ? c.reference_solution : '');
+    if (!String(code).trim()) continue;
+    hadCode = true;
+    if (captureCodeAllowed_(code)) return false; // 決定的なコードもあった＝別の理由で弾かれている
+  }
+  return hadCode; // コードは返ってきたが、全部が禁止要素入りだった
 }
 
 // 0〜4 に丸める（生成数の安全弁）
@@ -440,6 +474,7 @@ if (typeof module !== 'undefined' && module.exports) {
     tokenOverlap_: tokenOverlap_,
     matchConcepts_: matchConcepts_,
     validateCaptureCandidates_: validateCaptureCandidates_,
-    clampCount_: clampCount_
+    clampCount_: clampCount_,
+    rejectedForNondeterminism_: rejectedForNondeterminism_
   };
 }

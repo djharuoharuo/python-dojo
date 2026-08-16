@@ -1836,10 +1836,14 @@ async function confirmCapture(attach) {
 async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) {
   const verified = [];
   let budgetHit = false;
+  let undeterministic = false;  // その話題は自動生成できない（再試行しても無駄）
+  let lastFailMessage = '';
   $('cap-status').hidden = false;
   try {
     for (let attempt = 0; attempt <= CAP_MAX_RETRIES && verified.length < CAP_DESIRED; attempt++) {
-      $('cap-status').textContent = '問題のたねを作っています…（Gemini）';
+      $('cap-status').textContent = attempt === 0
+        ? '問題のたねを作っています…（Gemini）'
+        : `問題のたねを作り直しています…（${attempt + 1}回目）`;
       let cres;
       try {
         cres = await api('captureCandidates', {
@@ -1850,7 +1854,12 @@ async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) 
         // 予算切れ：捕捉済み＝キューには乗っているので、問題作成だけ次回に回す（§11 グレースフル劣化）。
         // それまでに検証できた分は下で保存する（捨てない）
         if (e.kind === 'budget') { budgetHit = true; break; }
-        throw e;
+        // 生成失敗（LLMの気まぐれ）は【このループで作り直す】のが設計。以前はここで throw して
+        // ループを1回で抜け、画面が真っ白のまま操作不能になっていた（捕捉自体は成功しているのに）
+        if (e.kind === 'generate_failed') { lastFailMessage = e.message; continue; }
+        // その話題は原理的に自動生成できない（入力待ち・乱数・日時・ファイル等）＝再試行は無駄
+        if (e.kind === 'capture_undeterministic') { undeterministic = true; lastFailMessage = e.message; break; }
+        throw e; // 通信・認証など、想定外は従来どおり上へ
       }
       const candidates = cres.candidates || [];
       for (let i = 0; i < candidates.length && verified.length < CAP_DESIRED; i++) {
@@ -1865,13 +1874,20 @@ async function generateVerifiedProblems(conceptId, conceptName, selfExp, logId) 
       finishCapture(conceptName, commit.saved || [],
         budgetHit ? '本日のLLM上限のため、用意できた分だけ保存しました（続きは次回）' : '');
     } else {
-      finishCapture(conceptName, [], budgetHit
-        ? '本日のLLM上限に達したため、問題作成は次回に回します（概念は復習キューに登録済みです）'
-        : '今回は検証を通る問題が作れませんでした（概念は復習キューに登録済みです）。あとで棚の「もう一度作る」で再挑戦できます');
+      let note;
+      if (budgetHit) {
+        note = '本日のLLM上限に達したため、問題作成は次回に回します（概念は復習キューに登録済みです）';
+      } else if (undeterministic) {
+        note = lastFailMessage; // その話題は自動生成できない理由を正直に伝える（再試行を促さない）
+      } else {
+        note = '今回は検証を通る問題が作れませんでした（概念は復習キューに登録済みです）。あとで棚の「もう一度作る」で再挑戦できます';
+      }
+      finishCapture(conceptName, [], note);
     }
   } catch (e) {
-    $('cap-status').hidden = true;
+    // 想定外の失敗でも画面を空のまま放置しない（捕捉自体は成功しているので出口を必ず出す §14）
     showError(e.message);
+    finishCapture(conceptName, [], '問題の作成中にエラーが出ました（概念は復習キューに登録済みです）。棚の「もう一度作る」で再挑戦できます');
   }
 }
 
