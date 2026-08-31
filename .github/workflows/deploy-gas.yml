@@ -57,7 +57,18 @@ jobs:
 
       # 注意: DEBUG=clasp:* は認証トークン全文をログに出力するため絶対に付けない（§9）
       - name: clasp push（ソースをGASプロジェクトへ反映）
-        run: clasp push -f
+        run: |
+          # clasp の認証トークン（.clasprc.json のrefresh token）は【約1週間で失効する】。
+          # 失効すると clasp は "invalid_grant" の1行だけを出して落ちるため、原因が分からず
+          # 「Pagesは成功しているのにサーバ側だけ古いまま」という気づきにくい事故になる。
+          # そこで invalid_grant を検出したら日本語で対処手順を出す（黙って失敗しない §14）。
+          out=$(clasp push -f 2>&1) || rc=$?
+          echo "$out"
+          if echo "$out" | grep -qi 'invalid_grant'; then
+            echo "::error::clasp の認証が失効しました（invalid_grant）。トークンは約1週間で切れます。PCで 'clasp login' をやり直し、'cat ~/.clasprc.json' の全文を Secrets の CLASP_CREDENTIALS に貼り直してから、このワークフローを Re-run してください。毎週やりたくない場合はREADME「認証が毎週切れるのを止める」を参照"
+            exit 1
+          fi
+          exit ${rc:-0}
         working-directory: gas
 
       - name: clasp deploy（既存デプロイを更新。URL固定）

@@ -82,6 +82,38 @@ clasp push                        # gas/ のソースをアップロード
 > ほぼ `GAS_SCRIPT_ID` の貼り間違い（文字欠け・空白混入）。手順2でIDを貼り直す。
 > なお原因調査で `DEBUG=clasp:*` を付けると**認証トークンがログに平文で出てしまう**ので付けないこと。
 
+#### `invalid_grant` と出た時（認証が切れた）
+
+Actionのログに `invalid_grant` の1行だけが出て失敗するのは、**clasp のログイン情報が失効した**サイン。
+`clasp login` が発行する更新用トークンは**約1週間で切れる**ため、放っておくと必ずこうなる。
+厄介なのは **Pages（アプリ画面）のデプロイは成功したまま**なので、
+「画面は新しいのにサーバ側だけ古い」という気づきにくい状態になること。
+
+**その場の直し方（2分）**
+
+1. PCで `clasp login` をやり直す
+2. `cat ~/.clasprc.json` の全文を Secrets の `CLASP_CREDENTIALS` に貼り直す
+3. GitHubの Actions → **Deploy GAS backend** → `Run workflow` で再実行する
+
+#### 認証が毎週切れるのを止める（恒久対策・任意）
+
+7日で失効するのは、OAuthの同意画面が「**テスト中（Testing）**」状態のアプリが発行した
+トークンをGoogleが自動で失効させる仕様のため。**自分のGoogle CloudプロジェクトのOAuthクライアントを作り、
+公開ステータスを「本番環境（In production）」にする**と、この7日ルールから外れる。
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作る（無料）
+2. **APIとサービス → ライブラリ** で `Apps Script API` を有効化
+3. **OAuth同意画面** を作成（User type = 外部）→ 公開ステータスを **「本番環境」** に切り替える
+   - 「Googleで確認されていないアプリ」という警告は出るが、**自分だけが使うので
+     「詳細 → 安全でないページに移動」で進んで問題ない**（審査は不要）
+4. **認証情報 → OAuthクライアントID → デスクトップアプリ** を作成し、JSONをダウンロード
+5. `clasp login --creds /path/to/client_secret.json` でログインし直す
+6. 新しい `~/.clasprc.json` を Secrets の `CLASP_CREDENTIALS` に貼り直す
+
+> やらなくてもアプリは動く。「`gas/` を触った時だけ、たまに貼り直す」運用でも支障はない。
+> ただし**サーバ側の修正が本番に届いていないことに気づかない**のが一番怖いので、
+> `gas/` を変更したマージの後は Actions の **Deploy GAS backend** が緑になったかを必ず確認すること。
+
 > **セキュリティ注記**: `CLASP_CREDENTIALS` は `APP_TOKEN` より強い権限（GASプロジェクト自体の
 > 書き換え）を持つ。漏洩が疑われたら [Googleアカウントのサードパーティアクセス管理](https://myaccount.google.com/connections)
 > で該当アプリのアクセスを取り消し、`clasp login` し直してSecretsを再登録する（数分で完了）。
