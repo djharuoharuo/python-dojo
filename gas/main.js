@@ -49,7 +49,8 @@ function handleRequest_(e) {
     // 書き込み系はスクリプトロックで直列化（採番・状態更新の競合を根絶 §5）。
     // どれもLLMを呼ばない、または呼んでも短い（generateのみ長いが採番があるため必須）
     if (action === 'generate' || action === 'saveSelfNote' || action === 'saveDraft' ||
-        action === 'capture' || action === 'commitProblems' || action === 'discardProblem') {
+        action === 'capture' || action === 'commitProblems' || action === 'discardProblem' ||
+        action === 'undoAttempt') {
       var lock = LockService.getScriptLock();
       if (!lock.tryLock(30 * 1000)) {
         return { error: 'busy', message: '別の処理が実行中です。数秒待ってからもう一度お試しください' };
@@ -58,6 +59,7 @@ function handleRequest_(e) {
         if (action === 'generate') return actionGenerate_(body);
         if (action === 'saveSelfNote') return actionSaveSelfNote_(body);
         if (action === 'discardProblem') return actionDiscardProblem_(body);
+        if (action === 'undoAttempt') return actionUndoAttempt_(body);
         if (action === 'saveDraft') return actionSaveDraft_(body);
         if (action === 'capture') return actionCapture_(body);
         if (action === 'commitProblems') return actionCommitProblems_(body);
@@ -180,6 +182,48 @@ function actionDiscardProblem_(body) {
 }
 
 // ---------------------------------------------------------------------
+// undoAttempt — ミス送信（打っている途中の誤タップ等）を1件取り消し、問題を未回答に戻す。
+// 履歴画面の「🗑 取り消す」から呼ぶ。安全に取り消せる範囲だけに限定する：
+//   ・練習(mode='練習')の記録＝もとから attempts に1行残るだけ（FSRS・状態・ミス集計・
+//     リベンジに一切影響しない §7）なので、どの種別でも無条件に削除できる
+//   ・本番(mode='本番')は「読む/並べる」段（予測・説明・和訳・トレース・並べ替え）に限る。
+//     これらは isTrace 扱いで、副作用が「概念のFSRS復習日を少し動かす」だけ（§スキルラダー）。
+//     ノーヒント連続正解・昇級/降格・ミス集計・リベンジ登録は一切発生しないため、
+//     attempts行の削除＋problems.statusを戻すだけで実質的に「無かったこと」にできる。
+//   ・復習/ノーヒント/デバッグ/新規/組む は、状態遷移やミス集計・リベンジ登録まで
+//     絡むため対象外（安全に巻き戻せる保証がない。原因メモで対応してもらう）
+// ---------------------------------------------------------------------
+var UNDOABLE_TYPES_ = ['予測', '説明', '和訳', 'トレース', '並べ替え'];
+
+// 練習記録はどの種別でも安全。本番は「読む/並べる」段（isTrace扱い）だけ安全（上のコメント参照）。
+// history.js（一覧の undoable フラグ）とここで同じ判定を共有し、ズレを防ぐ
+function isUndoable_(mode, type) {
+  return mode === '練習' || UNDOABLE_TYPES_.indexOf(type) !== -1;
+}
+
+function actionUndoAttempt_(body) {
+  var attemptId = String(body.attempt_id || '');
+  if (!attemptId) return { error: 'bad_request', message: 'attempt_id がありません。履歴を再読み込みしてください' };
+
+  var att = readRows_('attempts').filter(function (a) { return a.attempt_id === attemptId; })[0];
+  if (!att) return { error: 'not_found', message: '対象の記録が見つかりません（すでに取り消し済みかもしれません）' };
+
+  if (!isUndoable_(att.mode, att.type)) {
+    return {
+      error: 'not_undoable',
+      message: 'この種類の問題は習得・復習の判定に深く関わるため取り消せません。原因メモに残す形で対応してください'
+    };
+  }
+
+  var isPractice = att.mode === '練習';
+  deleteRowWhere_('attempts', 'attempt_id', attemptId);
+  if (!isPractice) {
+    updateRowWhere_('problems', 'problem_id', att.problem_id, { status: '未回答' });
+  }
+  return { ok: true, requeued: !isPractice };
+}
+
+// ---------------------------------------------------------------------
 // saveSelfNote — 「原因を自分の言葉で1行」を attempts に書き戻す
 // ---------------------------------------------------------------------
 function actionSaveSelfNote_(body) {
@@ -191,4 +235,9 @@ function actionSaveSelfNote_(body) {
     return { error: 'not_found', message: '対象の解答記録が見つかりません。ホームに戻って続けてください' };
   }
   return { ok: true };
+}
+
+// Nodeスモークテスト用にエクスポート（ブラウザ/GASでは無視される）
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { isUndoable_: isUndoable_, UNDOABLE_TYPES_: UNDOABLE_TYPES_ };
 }

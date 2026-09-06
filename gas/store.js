@@ -136,6 +136,19 @@ function updateRowWhere_(name, keyCol, keyVal, updates) {
   return false;
 }
 
+// keyCol = keyVal の最初の行を削除する。見つかれば true（undoAttempt §14 で使用）
+function deleteRowWhere_(name, keyCol, keyVal) {
+  var rows = readRows_(name);
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][keyCol] === String(keyVal)) {
+      getSheet_(name).deleteRow(rows[i]._rowIndex);
+      delete ROWS_CACHE_[name]; // 書いたら実行内キャッシュを捨てる（次の読みで反映）
+      return true;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------
 // config タブ（key-value）ヘルパー
 // ---------------------------------------------------------------------

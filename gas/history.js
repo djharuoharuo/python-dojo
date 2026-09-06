@@ -41,6 +41,7 @@ function actionGetHistory_(body) {
     var runs = [];
     try { runs = JSON.parse(a.runs_json || '[]'); if (!Array.isArray(runs)) runs = []; } catch (e) { runs = []; }
     return {
+      attempt_id: a.attempt_id,    // 取り消し（undoAttempt）で使う
       problem_id: a.problem_id,    // 再挑戦で同じ問題を開き直すのに使う
       timestamp: a.timestamp,
       number: pl.number || '',
@@ -50,6 +51,8 @@ function actionGetHistory_(body) {
       verdict: a.verdict,
       hint_used: a.hint_used === 'TRUE',
       practice: a.mode === '練習', // 再挑戦（練習）の記録か
+      // 誤タップ等で送ってしまった記録を取り消せるか（§undoAttempt。判定は main.js の isUndoable_ と共有）
+      undoable: isUndoable_(a.mode, a.type),
       error_pattern: a.error_pattern,
       self_note: a.self_note,
       code: a.code,
