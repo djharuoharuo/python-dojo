@@ -298,12 +298,15 @@ function renderHistory(items) {
         (it.tries >= 2 ? `（正解率 ${rate}%）` : '') + `</div>`
       : '';
     const canRetry = it.problem_id && it.payload;
+    const canUndo = it.undoable && it.attempt_id;
     det.innerHTML =
       `<summary>${mark} <b>${num}${escapeHtml(it.title)}</b>` +
       `<span class="hist-meta">${date} ・ ${escapeHtml(it.type)}${hint}${practice}</span></summary>` +
       `<div class="hist-body">` +
         stat +
         (canRetry ? `<button class="btn-small hist-retry">🔁 この問題にもう一度挑戦</button>` : '') +
+        // 打っている途中の誤タップ等で送ってしまった記録を取り消し、問題を未回答に戻す（§undoAttempt）
+        (canUndo ? `<button class="btn-small hist-undo">🗑 この記録を取り消す</button>` : '') +
         (it.statement ? `<p class="hist-statement">${escapeHtml(it.statement)}</p>` : '') +
         // 予測/読む段は「問題のコード」と「正しい出力」が問題そのもの。履歴でも必ず見せる
         // （これが無いと『問題が載っていないのに解答だけ』になってしまう）
@@ -320,8 +323,26 @@ function renderHistory(items) {
     if (canRetry) {
       det.querySelector('.hist-retry').onclick = () => rechallenge(it);
     }
+    if (canUndo) {
+      det.querySelector('.hist-undo').onclick = () => undoAttempt(it);
+    }
     list.appendChild(det);
   });
+}
+
+// 誤タップ等で送ってしまった記録を取り消す。attempts行を削除し、本番の記録なら
+// 問題を「未回答」に戻す（=ホームにまた出る）。対象種別はサーバ側で判定（§undoAttempt）
+async function undoAttempt(it) {
+  const msg = it.practice
+    ? 'この練習記録を取り消します。よろしいですか？'
+    : 'この記録を取り消し、問題を未回答に戻します（ホームにまた出ます）。よろしいですか？';
+  if (!confirm(msg)) return;
+  try {
+    await api('undoAttempt', { attempt_id: it.attempt_id });
+    loadHistory();
+  } catch (e) {
+    showError(e.message);
+  }
 }
 
 // 過去問の「再挑戦」: 履歴の1件から同じ問題をそのまま開き直す（練習モード）。
@@ -804,6 +825,8 @@ $('btn-trace-check').onclick = async () => {
     showError(isExplain ? 'まずこのコードが何をするか書いてみよう' : 'まず出力を予想して入力してみよう');
     return;
   }
+  // ヒント段階の無いタイプ＝押した瞬間が最終提出。打っている途中の誤タップ対策で一度確認する
+  if (!confirm('この内容で送信します。よろしいですか？')) return;
   $('btn-trace-check').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '答え合わせ中…';
@@ -924,6 +947,8 @@ function moveParsons(idx, dir) {
   renderParsons();
 }
 $('btn-parsons-check').onclick = async () => {
+  // ヒント段階の無いタイプ＝押した瞬間が最終提出。打っている途中の誤タップ対策で一度確認する
+  if (!confirm('この並びで送信します。よろしいですか？')) return;
   $('btn-parsons-check').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '答え合わせ中…';
@@ -994,6 +1019,8 @@ function renderWayaku(lines) {
 $('btn-wayaku-check').onclick = async () => {
   const descs = (state.wayakuInputs || []).map((i) => i.value);
   if (!descs.some((d) => d.trim() !== '')) { showError('1行でもいいので日本語で書いてみよう'); return; }
+  // ヒント段階の無いタイプ＝押した瞬間が最終提出。打っている途中の誤タップ対策で一度確認する
+  if (!confirm('この内容で送信します。よろしいですか？')) return;
   $('btn-wayaku-check').disabled = true;
   $('run-status').hidden = false;
   $('run-status').textContent = '答え合わせ中…';
@@ -1249,6 +1276,8 @@ function renderFill(code) {
 $('btn-fill-check').onclick = async () => {
   const inputs = Object.values(state.fillInputs || {});
   if (inputs.length === 0 || inputs.some((i) => !i.value.trim())) { showError('空欄を全部埋めてみよう'); return; }
+  // ヒント段階の無いタイプ＝押した瞬間が最終提出。打っている途中の誤タップ対策で一度確認する
+  if (!confirm('この内容で送信します。よろしいですか？')) return;
   const assembled = state.fillCode.replace(/___(\d+)___/g, (m, label) => {
     const inp = state.fillInputs[label];
     return inp ? inp.value : '';
